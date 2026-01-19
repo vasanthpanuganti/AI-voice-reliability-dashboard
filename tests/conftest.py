@@ -12,11 +12,13 @@ import numpy as np
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from backend.database import Base, get_db
+from backend.database import Base, get_db, init_db
 from backend.api.main import app
-from backend.models.query_log import QueryLog
-from backend.models.configuration import Configuration, ConfigVersion
-from backend.models.drift_metrics import DriftMetric, DriftAlert
+# Import all models to ensure they're registered with Base
+from backend.models import (
+    QueryLog, Configuration, ConfigVersion, 
+    DriftMetric, DriftAlert, RollbackEvent, BaselineStatistics
+)
 from backend.services.drift_detection_service import DriftDetectionService
 from backend.services.rollback_service import RollbackService
 from backend.services.confidence_routing_service import ConfidenceRoutingService
@@ -28,6 +30,11 @@ TEST_DATABASE_URL = "sqlite:///:memory:"
 @pytest.fixture(scope="function")
 def test_engine():
     """Create a test database engine"""
+    # Import all models first to ensure they're registered with Base
+    from backend.models import (
+        QueryLog, Configuration, ConfigVersion,
+        DriftMetric, DriftAlert, RollbackEvent, BaselineStatistics
+    )
     engine = create_engine(
         TEST_DATABASE_URL,
         connect_args={"check_same_thread": False}
@@ -53,7 +60,12 @@ def test_db(test_engine) -> Generator[Session, None, None]:
 @pytest.fixture(scope="function")
 def api_client(test_db: Session, test_engine) -> TestClient:
     """Create a FastAPI test client with test database override"""
-    # Ensure tables are created
+    # Ensure all models are imported and tables are created
+    # Import all models explicitly to register with Base
+    from backend.models import (
+        QueryLog, Configuration, ConfigVersion,
+        DriftMetric, DriftAlert, RollbackEvent, BaselineStatistics
+    )
     Base.metadata.create_all(bind=test_engine)
     
     def override_get_db():

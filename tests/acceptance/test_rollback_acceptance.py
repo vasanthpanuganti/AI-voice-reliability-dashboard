@@ -147,7 +147,7 @@ class TestAC6_AuditLogCompleteness:
         # Find this rollback in audit log
         rollback_entry = None
         for entry in audit_log:
-            if entry.get("rollback_id") == rollback_event.id:
+            if entry.get("id") == rollback_event.id:
                 rollback_entry = entry
                 break
         

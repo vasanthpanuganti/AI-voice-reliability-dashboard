@@ -63,8 +63,7 @@ class DriftMetricsResponse(BaseModel):
     baseline_size: Optional[int] = None
     computation_time_ms: Optional[float] = None
     
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
 class AlertResponse(BaseModel):
     """Response model for alerts"""
@@ -77,8 +76,7 @@ class AlertResponse(BaseModel):
     status: str
     created_at: datetime
     
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
 @router.get("/metrics", response_model=DriftMetricsResponse)
 def get_current_metrics(db: Session = Depends(get_db)):

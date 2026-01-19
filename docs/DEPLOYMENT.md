@@ -1,57 +1,34 @@
 # Deployment Guide
 
-This guide covers deploying the AI Pipeline Resilience Dashboard on Railway and Vercel.
+This guide covers deploying the AI Pipeline Resilience Dashboard to generic cloud platforms (for example a VM, container platform, or PaaS such as Render, Fly.io, or Vercel).
 
 ## Overview
 
 The project consists of:
 - **FastAPI Backend**: API endpoints for drift detection and rollback
-- **Web Dashboard**: HTML/JS dashboard served by FastAPI (works on Railway & Vercel)
-- **Streamlit Dashboard**: Advanced Python dashboard (Railway only)
+- **Streamlit Dashboard**: Advanced Python dashboard for rich monitoring
 
-## Railway Deployment
+## Container / PaaS Deployment (generic)
 
-### Option 1: Single Service (Web Dashboard)
+Most platforms that support Docker or generic Python apps follow the same pattern:
 
-The FastAPI backend automatically serves a web-based dashboard at the root URL (`/`).
+1. **Create a new service/app**
+2. **Connect your GitHub repository** (or push a container image)
+3. **Add a managed database** (PostgreSQL recommended for production) or mount a persistent volume if you want to keep using SQLite
+4. **Configure Environment Variables** (see below)
+5. **Expose Ports**:
+   - API service: port `8000`
+   - Dashboard service: port `8501`
+6. **Deploy**: the platform will build the app from `requirements.txt` and run your chosen start command.
 
-1. **Create a new Railway project**
-2. **Connect your GitHub repository**
-3. **Add PostgreSQL Database** (if not using SQLite):
-   - Click "New" → "Database" → "Add PostgreSQL"
-   - Copy the `DATABASE_URL` from the database service
-4. **Configure Environment Variables**:
-   - `DATABASE_URL`: PostgreSQL connection string (if using PostgreSQL)
-   - `API_URL`: Leave empty (dashboard auto-detects)
-5. **Deploy**: Railway will automatically detect and deploy using `railway.json`
+Example process manager commands:
 
-The dashboard will be available at your Railway URL (e.g., `https://your-app.up.railway.app`)
+- API: `python run_api.py`
+- Dashboard: `python run_dashboard.py`
 
-### Option 2: Two Services (API + Streamlit Dashboard)
+## Vercel Deployment (API only)
 
-For the full Streamlit dashboard experience:
-
-#### Service 1: FastAPI Backend
-
-1. Create a new service in Railway
-2. Use the existing `railway.json` configuration
-3. Set environment variables:
-   - `DATABASE_URL`: PostgreSQL connection string
-   - `PORT`: 8000 (default)
-
-#### Service 2: Streamlit Dashboard
-
-1. Create a second service in Railway
-2. Use `railway-dashboard.json` configuration
-3. Set environment variables:
-   - `API_URL`: URL of your FastAPI service (e.g., `https://your-api.up.railway.app`)
-   - `PORT`: 8501 (default)
-
-**Note**: Streamlit requires a public URL. Railway will provide one automatically.
-
-## Vercel Deployment
-
-Vercel supports serverless functions, making it perfect for the FastAPI backend with the web dashboard.
+Vercel supports serverless functions, which can be used for the FastAPI backend with a web dashboard if you adapt the entrypoint.
 
 ### Steps:
 
@@ -77,9 +54,9 @@ Vercel supports serverless functions, making it perfect for the FastAPI backend 
 
 ### Database Setup for Vercel
 
-Since Vercel is serverless, you **must** use PostgreSQL:
+Since Vercel is serverless, you **must** use PostgreSQL or another managed database:
 - Use Vercel Postgres (recommended)
-- Or external services like Supabase, Railway Postgres, etc.
+- Or external services like Supabase or any other hosted Postgres
 - Set `DATABASE_URL` in Vercel environment variables
 
 ## Environment Variables

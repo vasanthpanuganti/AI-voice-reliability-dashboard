@@ -421,6 +421,10 @@ class ConfidenceRoutingService:
             "avg_confidence": 0.0,
             "validation_failure_rate": 0.0,
         }
+    
+    def get_fallback_responses(self) -> Dict[str, str]:
+        """Get all fallback responses by category"""
+        return FALLBACK_RESPONSES.copy()
 
 
 class GuardrailsEngine:

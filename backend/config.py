@@ -2,6 +2,7 @@
 import os
 from pathlib import Path
 from pydantic_settings import BaseSettings
+from pydantic import ConfigDict
 
 # Get project root directory
 PROJECT_ROOT = Path(__file__).parent.parent.absolute()
@@ -11,7 +12,7 @@ def get_database_url() -> str:
     # Default to SQLite for easy local development
     default_url = f"sqlite:///{PROJECT_ROOT}/ai_resilience.db"
     url = os.getenv("DATABASE_URL", default_url)
-    # Railway uses postgres:// but SQLAlchemy requires postgresql://
+    # Some providers use postgres:// but SQLAlchemy requires postgresql://
     if url.startswith("postgres://"):
         url = url.replace("postgres://", "postgresql://", 1)
     return url
@@ -46,9 +47,10 @@ class Settings(BaseSettings):
     # Embedding model
     EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
     
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
-        extra = "ignore"  # Ignore extra environment variables
+    model_config = ConfigDict(
+        env_file=".env",
+        case_sensitive=True,
+        extra="ignore"  # Ignore extra environment variables
+    )
 
 settings = Settings()

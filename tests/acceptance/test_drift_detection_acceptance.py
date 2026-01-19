@@ -29,10 +29,10 @@ class TestAC1_DriftDetectionWithin15Minutes:
         
         # Verify drift is detected (PSI should be high)
         assert metrics is not None
-        assert metrics.get("psi_score") is not None
+        assert metrics.psi_score is not None
         
         # PSI should exceed warning threshold (0.15) for 20% shift
-        psi_score = metrics.get("psi_score", 0.0)
+        psi_score = metrics.psi_score or 0.0
         assert psi_score > 0.10  # Should detect significant shift
         
         # Check that alerts are generated

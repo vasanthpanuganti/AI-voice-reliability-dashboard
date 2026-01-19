@@ -24,8 +24,7 @@ class RollbackResponse(BaseModel):
     restored_version_id: int
     executed_at: str
     
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
 @router.get("/versions")
 def get_config_versions(db: Session = Depends(get_db)):
