@@ -62,6 +62,68 @@
             background: #E24D42;
         }
         
+        .refresh-controls {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 1.5rem;
+            margin-top: 1.5rem;
+            padding: 1rem;
+            background: #2a2a2a;
+            border-radius: 4px;
+        }
+        
+        .refresh-toggle {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .toggle-btn {
+            background: #404040;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: background 0.2s;
+        }
+        
+        .toggle-btn.active {
+            background: #73BF69;
+        }
+        
+        .toggle-btn:hover {
+            background: #505050;
+        }
+        
+        .toggle-btn.active:hover {
+            background: #5a9f59;
+        }
+        
+        .interval-control {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+        
+        .interval-control label {
+            color: #B7B7B7;
+            font-size: 14px;
+        }
+        
+        .interval-slider {
+            width: 120px;
+            cursor: pointer;
+        }
+        
+        .interval-value {
+            color: #73BF69;
+            font-weight: 600;
+            min-width: 40px;
+        }
+        
         .metrics-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -152,6 +214,30 @@
             background: #8B0000;
         }
         
+        .chart-section {
+            margin-top: 2rem;
+            padding: 1.5rem;
+            background: #1a1a1a;
+            border: 1px solid #2a2a2a;
+        }
+        
+        .chart-section h3 {
+            color: #ffffff;
+            font-size: 1.2rem;
+            margin-bottom: 1rem;
+        }
+        
+        .chart-container {
+            height: 300px;
+        }
+        
+        .charts-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 1.5rem;
+            margin-top: 2rem;
+        }
+        
         .alerts-section {
             margin-top: 3rem;
             padding-top: 2rem;
@@ -165,19 +251,66 @@
             margin-bottom: 1.5rem;
         }
         
-        .alert-expandable {
-            cursor: pointer;
-            transition: background 0.2s;
+        .alerts-summary {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+            flex-wrap: wrap;
         }
         
-        .alert-expandable:hover {
-            background: #2a2a2a;
+        .alert-count-badge {
+            padding: 8px 16px;
+            border-radius: 4px;
+            font-size: 14px;
+            font-weight: 600;
         }
         
-        .alert-details-expanded {
-            margin-top: 16px;
-            padding-top: 16px;
-            border-top: 1px solid #2a2a2a;
+        .alert-count-badge.warning {
+            background: rgba(247, 148, 32, 0.2);
+            color: #F79420;
+            border: 1px solid #F79420;
+        }
+        
+        .alert-count-badge.critical {
+            background: rgba(226, 77, 66, 0.2);
+            color: #E24D42;
+            border: 1px solid #E24D42;
+        }
+        
+        .alert-count-badge.emergency {
+            background: rgba(139, 0, 0, 0.2);
+            color: #ff6666;
+            border: 1px solid #8B0000;
+        }
+        
+        .alert-panel {
+            background: #1a1a1a;
+            border-left: 4px solid;
+            padding: 20px;
+            margin: 12px 0;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+        
+        .alert-warning {
+            border-left-color: #F79420;
+        }
+        
+        .alert-critical {
+            border-left-color: #E24D42;
+        }
+        
+        .alert-emergency {
+            border-left-color: #8B0000;
+        }
+        
+        .alert-title {
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+        
+        .alert-details {
+            font-size: 14px;
+            color: #B7B7B7;
         }
         
         .alert-detail-row {
@@ -193,6 +326,12 @@
         .alert-detail-value {
             color: #e0e0e0;
             margin-left: 8px;
+        }
+        
+        .alert-details-expanded {
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px solid #2a2a2a;
         }
         
         .info-icon {
@@ -268,36 +407,6 @@
             text-decoration: underline;
         }
         
-        .alert-panel {
-            background: #1a1a1a;
-            border-left: 4px solid;
-            padding: 20px;
-            margin: 12px 0;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-        }
-        
-        .alert-warning {
-            border-left-color: #F79420;
-        }
-        
-        .alert-critical {
-            border-left-color: #E24D42;
-        }
-        
-        .alert-emergency {
-            border-left-color: #8B0000;
-        }
-        
-        .alert-title {
-            font-weight: 600;
-            margin-bottom: 8px;
-        }
-        
-        .alert-details {
-            font-size: 14px;
-            color: #B7B7B7;
-        }
-        
         .loading {
             text-align: center;
             padding: 2rem;
@@ -358,6 +467,62 @@
         .tab-content.active {
             display: block;
         }
+        
+        .timeline-event {
+            display: flex;
+            align-items: flex-start;
+            margin: 1rem 0;
+            padding-left: 20px;
+            border-left: 2px solid #404040;
+            position: relative;
+        }
+        
+        .timeline-event::before {
+            content: '';
+            position: absolute;
+            left: -6px;
+            top: 4px;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #73BF69;
+        }
+        
+        .timeline-event.warning::before {
+            background: #F79420;
+        }
+        
+        .timeline-event.critical::before {
+            background: #E24D42;
+        }
+        
+        .timeline-event.emergency::before {
+            background: #8B0000;
+        }
+        
+        .timeline-event.rollback::before {
+            background: #5b9bd5;
+        }
+        
+        .timeline-content {
+            flex: 1;
+        }
+        
+        .timeline-time {
+            color: #B7B7B7;
+            font-size: 12px;
+            min-width: 140px;
+        }
+        
+        .timeline-title {
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+        
+        .timeline-desc {
+            font-size: 14px;
+            color: #B7B7B7;
+        }
     </style>
 </head>
 <body>
@@ -369,6 +534,24 @@
                 <span class="status-indicator" id="apiStatus"></span>
                 <span id="apiStatusText">Checking API...</span>
             </div>
+            
+            <div class="refresh-controls">
+                <div class="refresh-toggle">
+                    <button class="toggle-btn active" id="refreshToggle" onclick="toggleAutoRefresh()">
+                        Auto-Refresh: ON
+                    </button>
+                </div>
+                <div class="interval-control">
+                    <label>Interval:</label>
+                    <input type="range" class="interval-slider" id="intervalSlider" 
+                           min="30" max="60" value="30" step="5" 
+                           onchange="updateInterval(this.value)">
+                    <span class="interval-value" id="intervalValue">30s</span>
+                </div>
+                <button class="refresh-btn" onclick="loadData()" style="margin: 0; padding: 8px 16px;">
+                    Refresh Now
+                </button>
+            </div>
         </header>
         
         <div class="tabs">
@@ -379,6 +562,16 @@
         
         <div id="driftTab" class="tab-content active">
             <div id="metricsContainer" class="loading">Loading metrics...</div>
+            <div class="charts-grid">
+                <div class="chart-section">
+                    <h3>Drift Metrics Over Time</h3>
+                    <div id="driftChart" class="chart-container"></div>
+                </div>
+                <div class="chart-section">
+                    <h3>Alert Timeline</h3>
+                    <div id="alertChart" class="chart-container"></div>
+                </div>
+            </div>
             <div id="alertsContainer" class="alerts-section"></div>
         </div>
         
@@ -390,29 +583,63 @@
             <div id="overviewContainer" class="loading">Loading system overview...</div>
         </div>
         
-        <button class="refresh-btn" onclick="loadData()">Refresh Data</button>
-        
         <footer>
             <a href="https://github.com/vasanthpanuganti/AI-voice-reliability-dashboard" target="_blank" rel="noopener noreferrer">GitHub</a>
-            <span>•</span>
+            <span>|</span>
             <span>Built by curiosity</span>
         </footer>
     </div>
     
     <script>
-        // Auto-detect API URL
         const API_BASE_URL = window.location.origin;
-        let refreshInterval;
+        let refreshInterval = null;
+        let autoRefreshEnabled = true;
+        let refreshIntervalMs = 30000;
+        
+        function toggleAutoRefresh() {
+            autoRefreshEnabled = !autoRefreshEnabled;
+            const btn = document.getElementById('refreshToggle');
+            
+            if (autoRefreshEnabled) {
+                btn.textContent = 'Auto-Refresh: ON';
+                btn.classList.add('active');
+                startAutoRefresh();
+            } else {
+                btn.textContent = 'Auto-Refresh: OFF';
+                btn.classList.remove('active');
+                stopAutoRefresh();
+            }
+        }
+        
+        function updateInterval(value) {
+            refreshIntervalMs = value * 1000;
+            document.getElementById('intervalValue').textContent = value + 's';
+            
+            if (autoRefreshEnabled) {
+                stopAutoRefresh();
+                startAutoRefresh();
+            }
+        }
+        
+        function startAutoRefresh() {
+            if (refreshInterval) clearInterval(refreshInterval);
+            refreshInterval = setInterval(loadData, refreshIntervalMs);
+        }
+        
+        function stopAutoRefresh() {
+            if (refreshInterval) {
+                clearInterval(refreshInterval);
+                refreshInterval = null;
+            }
+        }
         
         function switchTab(tabName) {
-            // Update tab buttons
             document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
             document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
             
             event.target.classList.add('active');
             document.getElementById(tabName + 'Tab').classList.add('active');
             
-            // Load data for the active tab
             loadData();
         }
         
@@ -468,12 +695,6 @@
         
         function createMetricCard(label, value, severity, subtitle = '', progress = 0, metricType = '') {
             const severityClass = getSeverityClass(severity);
-            const colorMap = {
-                normal: '#73BF69',
-                warning: '#F79420',
-                critical: '#E24D42',
-                emergency: '#8B0000'
-            };
             const statusMap = {
                 normal: 'All Good',
                 warning: 'Needs Attention',
@@ -481,14 +702,12 @@
                 emergency: 'Urgent Action'
             };
             
-            const color = colorMap[severity?.toLowerCase() || 'normal'] || '#73BF69';
             const status = statusMap[severity?.toLowerCase() || 'normal'] || 'All Good';
             
-            // Formula tooltips
             const formulas = {
                 'psi_score': {
                     title: 'Population Stability Index (PSI)',
-                    formula: 'PSI = Σ((Actual_i - Expected_i) × ln(Actual_i / Expected_i))',
+                    formula: 'PSI = Sum((Actual_i - Expected_i) x ln(Actual_i / Expected_i))',
                     description: 'Measures how much a distribution has shifted over time. Higher values indicate greater distribution change.'
                 },
                 'ks_p_value': {
@@ -498,13 +717,8 @@
                 },
                 'js_divergence': {
                     title: 'Jensen-Shannon Divergence',
-                    formula: 'JS(P||Q) = 0.5 × KL(P||M) + 0.5 × KL(Q||M) where M = 0.5(P+Q)',
+                    formula: 'JS(P||Q) = 0.5 x KL(P||M) + 0.5 x KL(Q||M)',
                     description: 'Symmetric measure of similarity between probability distributions. Returns value between 0 (identical) and 1 (completely different).'
-                },
-                'wasserstein': {
-                    title: 'Wasserstein Distance',
-                    formula: 'W_p(P,Q) = (inf E[|X-Y|^p])^(1/p)',
-                    description: 'Measures the minimum cost to transform one distribution into another. More sensitive to subtle semantic shifts.'
                 }
             };
             
@@ -549,8 +763,6 @@
             }
             
             const cards = [];
-            
-            // Display sample size info (window vs total)
             const windowSize = metrics.sample_size || 0;
             const totalQueries = metrics.total_queries || 0;
             const sampleInfo = windowSize > 0 
@@ -608,8 +820,128 @@
                 container.innerHTML = `<div class="metrics-grid">${cards.join('')}</div>`;
             }
             
-            // Load alerts
+            loadDriftChart();
+            loadAlertChart();
             loadAlerts();
+        }
+        
+        async function loadDriftChart() {
+            const history = await fetchAPI('/api/drift/history?limit=50');
+            
+            if (!history || history.length === 0) {
+                document.getElementById('driftChart').innerHTML = '<div class="loading">No historical data</div>';
+                return;
+            }
+            
+            const data = history.reverse();
+            const timestamps = data.map(m => new Date(m.timestamp));
+            
+            const traces = [
+                {
+                    x: timestamps,
+                    y: data.map(m => m.psi_score),
+                    name: 'PSI Score',
+                    type: 'scatter',
+                    mode: 'lines+markers',
+                    line: { color: '#73BF69', width: 2 },
+                    marker: { size: 6 }
+                },
+                {
+                    x: timestamps,
+                    y: data.map(m => m.js_divergence),
+                    name: 'JS Divergence',
+                    type: 'scatter',
+                    mode: 'lines+markers',
+                    line: { color: '#5b9bd5', width: 2 },
+                    marker: { size: 6 }
+                }
+            ];
+            
+            // Add threshold lines
+            const shapes = [
+                { type: 'line', y0: 0.15, y1: 0.15, x0: timestamps[0], x1: timestamps[timestamps.length-1], line: { color: '#F79420', dash: 'dash', width: 1 } },
+                { type: 'line', y0: 0.25, y1: 0.25, x0: timestamps[0], x1: timestamps[timestamps.length-1], line: { color: '#E24D42', dash: 'dash', width: 1 } },
+                { type: 'line', y0: 0.40, y1: 0.40, x0: timestamps[0], x1: timestamps[timestamps.length-1], line: { color: '#8B0000', dash: 'dash', width: 1 } }
+            ];
+            
+            const layout = {
+                paper_bgcolor: '#1a1a1a',
+                plot_bgcolor: '#1a1a1a',
+                font: { color: '#e0e0e0' },
+                margin: { t: 20, r: 20, b: 40, l: 50 },
+                xaxis: { gridcolor: '#2a2a2a', tickformat: '%m/%d %H:%M' },
+                yaxis: { gridcolor: '#2a2a2a', title: 'Score' },
+                legend: { orientation: 'h', y: -0.2 },
+                shapes: shapes,
+                annotations: [
+                    { x: timestamps[timestamps.length-1], y: 0.15, text: 'Warning', showarrow: false, xanchor: 'left', font: { color: '#F79420', size: 10 } },
+                    { x: timestamps[timestamps.length-1], y: 0.25, text: 'Critical', showarrow: false, xanchor: 'left', font: { color: '#E24D42', size: 10 } },
+                    { x: timestamps[timestamps.length-1], y: 0.40, text: 'Emergency', showarrow: false, xanchor: 'left', font: { color: '#8B0000', size: 10 } }
+                ]
+            };
+            
+            Plotly.newPlot('driftChart', traces, layout, { responsive: true, displayModeBar: false });
+        }
+        
+        async function loadAlertChart() {
+            const alerts = await fetchAPI('/api/drift/alerts?status=all');
+            
+            if (!alerts || alerts.length === 0) {
+                document.getElementById('alertChart').innerHTML = '<div class="loading">No alert history</div>';
+                return;
+            }
+            
+            // Count alerts by severity and date
+            const alertsByDate = {};
+            alerts.forEach(alert => {
+                const date = new Date(alert.created_at).toLocaleDateString();
+                if (!alertsByDate[date]) {
+                    alertsByDate[date] = { warning: 0, critical: 0, emergency: 0 };
+                }
+                const severity = alert.severity.toLowerCase();
+                if (alertsByDate[date][severity] !== undefined) {
+                    alertsByDate[date][severity]++;
+                }
+            });
+            
+            const dates = Object.keys(alertsByDate).sort((a, b) => new Date(a) - new Date(b));
+            
+            const traces = [
+                {
+                    x: dates,
+                    y: dates.map(d => alertsByDate[d].warning),
+                    name: 'Warning',
+                    type: 'bar',
+                    marker: { color: '#F79420' }
+                },
+                {
+                    x: dates,
+                    y: dates.map(d => alertsByDate[d].critical),
+                    name: 'Critical',
+                    type: 'bar',
+                    marker: { color: '#E24D42' }
+                },
+                {
+                    x: dates,
+                    y: dates.map(d => alertsByDate[d].emergency),
+                    name: 'Emergency',
+                    type: 'bar',
+                    marker: { color: '#8B0000' }
+                }
+            ];
+            
+            const layout = {
+                paper_bgcolor: '#1a1a1a',
+                plot_bgcolor: '#1a1a1a',
+                font: { color: '#e0e0e0' },
+                margin: { t: 20, r: 20, b: 40, l: 50 },
+                xaxis: { gridcolor: '#2a2a2a' },
+                yaxis: { gridcolor: '#2a2a2a', title: 'Alert Count' },
+                barmode: 'stack',
+                legend: { orientation: 'h', y: -0.2 }
+            };
+            
+            Plotly.newPlot('alertChart', traces, layout, { responsive: true, displayModeBar: false });
         }
         
         async function loadAlerts() {
@@ -617,86 +949,30 @@
             const alerts = await fetchAPI('/api/drift/alerts?status=active');
             
             if (!alerts || alerts.length === 0) {
-                container.innerHTML = '<div style="padding: 1rem; color: #B7B7B7;">No active alerts</div>';
+                container.innerHTML = '<div style="padding: 1rem; color: #B7B7B7;">No active alerts - System is healthy</div>';
                 return;
             }
             
-            // Fetch detailed diagnostics for each alert
-            const alertsWithDetails = await Promise.all(
-                alerts.map(async (alert) => {
-                    const diagnostics = await fetchAPI(`/api/drift/alerts/${alert.id}/diagnostics`);
-                    return { alert, diagnostics };
-                })
-            );
+            // Count by severity
+            const counts = { warning: 0, critical: 0, emergency: 0 };
+            alerts.forEach(a => {
+                const sev = a.severity.toLowerCase();
+                if (counts[sev] !== undefined) counts[sev]++;
+            });
             
-            const alertsHtml = alertsWithDetails.map(({ alert, diagnostics }, index) => {
+            const summaryHtml = `
+                <div class="alerts-summary">
+                    ${counts.emergency > 0 ? `<span class="alert-count-badge emergency">${counts.emergency} Emergency</span>` : ''}
+                    ${counts.critical > 0 ? `<span class="alert-count-badge critical">${counts.critical} Critical</span>` : ''}
+                    ${counts.warning > 0 ? `<span class="alert-count-badge warning">${counts.warning} Warning</span>` : ''}
+                </div>
+            `;
+            
+            const alertsHtml = alerts.slice(0, 10).map(alert => {
                 const severityClass = getSeverityClass(alert.severity);
                 const overThreshold = alert.metric_value > alert.threshold_value ? 
                     ((alert.metric_value - alert.threshold_value) / alert.threshold_value * 100).toFixed(1) : 
                     ((alert.threshold_value - alert.metric_value) / alert.threshold_value * 100).toFixed(1);
-                
-                let detailsHtml = '';
-                if (diagnostics && diagnostics.diagnostics) {
-                    const diag = diagnostics.diagnostics;
-                    detailsHtml = `
-                        <div class="alert-details-expanded">
-                            <div class="alert-detail-row">
-                                <span class="alert-detail-label">What this means:</span>
-                                <span class="alert-detail-value">${diag.what_it_means || diag.interpretation || 'N/A'}</span>
-                            </div>
-                            ${diag.baseline_period ? `
-                                <div class="alert-detail-row">
-                                    <span class="alert-detail-label">Baseline period:</span>
-                                    <span class="alert-detail-value">${diag.baseline_period}</span>
-                                </div>
-                            ` : ''}
-                            ${diag.current_period ? `
-                                <div class="alert-detail-row">
-                                    <span class="alert-detail-label">Current period:</span>
-                                    <span class="alert-detail-value">${diag.current_period}</span>
-                                </div>
-                            ` : ''}
-                            ${diag.baseline_sample_size ? `
-                                <div class="alert-detail-row">
-                                    <span class="alert-detail-label">Baseline sample size:</span>
-                                    <span class="alert-detail-value">${diag.baseline_sample_size}</span>
-                                </div>
-                            ` : ''}
-                            ${diag.current_sample_size ? `
-                                <div class="alert-detail-row">
-                                    <span class="alert-detail-label">Current sample size:</span>
-                                    <span class="alert-detail-value">${diag.current_sample_size}</span>
-                                </div>
-                            ` : ''}
-                            ${diag.category_shifts && diag.category_shifts.length > 0 ? `
-                                <div class="alert-detail-row">
-                                    <span class="alert-detail-label">Category shifts:</span>
-                                    <span class="alert-detail-value">
-                                        ${diag.category_shifts.map(cs => 
-                                            `${cs.category}: ${cs.baseline_percentage}% → ${cs.current_percentage}% (${cs.shift > 0 ? '+' : ''}${cs.shift}%)`
-                                        ).join(', ')}
-                                    </span>
-                                </div>
-                            ` : ''}
-                            ${diag.severity_interpretation ? `
-                                <div class="alert-detail-row">
-                                    <span class="alert-detail-label">Severity interpretation:</span>
-                                    <span class="alert-detail-value">${diag.severity_interpretation}</span>
-                                </div>
-                            ` : ''}
-                            ${diag.recommendations && diag.recommendations.length > 0 ? `
-                                <div class="alert-detail-row">
-                                    <span class="alert-detail-label">Recommendations:</span>
-                                    <span class="alert-detail-value">
-                                        <ul style="margin: 8px 0; padding-left: 20px;">
-                                            ${diag.recommendations.map(rec => `<li>${rec}</li>`).join('')}
-                                        </ul>
-                                    </span>
-                                </div>
-                            ` : ''}
-                        </div>
-                    `;
-                }
                 
                 return `
                     <div class="alert-panel alert-${severityClass}">
@@ -704,11 +980,11 @@
                         <div class="alert-details">
                             <div class="alert-detail-row">
                                 <span class="alert-detail-label">Current value:</span>
-                                <span class="alert-detail-value">${alert.metric_value.toFixed(3)}</span>
+                                <span class="alert-detail-value">${alert.metric_value.toFixed(4)}</span>
                             </div>
                             <div class="alert-detail-row">
                                 <span class="alert-detail-label">Threshold:</span>
-                                <span class="alert-detail-value">${alert.threshold_value.toFixed(3)}</span>
+                                <span class="alert-detail-value">${alert.threshold_value.toFixed(4)}</span>
                             </div>
                             <div class="alert-detail-row">
                                 <span class="alert-detail-label">Difference:</span>
@@ -718,13 +994,12 @@
                                 <span class="alert-detail-label">Created:</span>
                                 <span class="alert-detail-value">${new Date(alert.created_at).toLocaleString()}</span>
                             </div>
-                            ${detailsHtml}
                         </div>
                     </div>
                 `;
             }).join('');
             
-            container.innerHTML = `<h2>Active Alerts</h2>${alertsHtml}`;
+            container.innerHTML = `<h2>Active Alerts (${alerts.length})</h2>${summaryHtml}${alertsHtml}`;
         }
         
         async function loadRollbackInfo() {
@@ -739,22 +1014,38 @@
             
             let html = '<h2>Rollback Control</h2>';
             
+            html += '<div class="metrics-grid">';
+            
             if (current) {
-                html += `<div class="metric-card" style="margin-bottom: 2rem;">
+                html += `<div class="metric-card">
                     <div class="metric-label">Current Configuration</div>
-                    <div class="metric-value">Version ${current.version_id || 'N/A'}</div>
-                    <div class="metric-status">Created: ${current.created_at ? new Date(current.created_at).toLocaleString() : 'N/A'}</div>
+                    <div class="metric-value">${current.version_label || 'v' + (current.version_id || 'N/A')}</div>
+                    <div class="metric-status">Active since: ${current.created_at ? new Date(current.created_at).toLocaleString() : 'N/A'}</div>
                 </div>`;
             }
             
+            if (versions && versions.length > 0) {
+                const knownGood = versions.filter(v => v.is_known_good).length;
+                html += `<div class="metric-card">
+                    <div class="metric-label">Available Versions</div>
+                    <div class="metric-value">${versions.length}</div>
+                    <div class="metric-status">${knownGood} known-good versions</div>
+                </div>`;
+            }
+            
+            html += '</div>';
+            
             if (history && history.length > 0) {
-                html += '<h3 style="margin-top: 2rem; margin-bottom: 1rem;">Recent Rollback History</h3>';
+                html += '<h3 style="margin-top: 2rem; margin-bottom: 1rem;">Rollback Timeline</h3>';
                 html += history.map(event => `
-                    <div class="alert-panel">
-                        <div class="alert-title">Rollback to Version ${event.target_version_id}</div>
-                        <div class="alert-details">
-                            Trigger: ${event.trigger_type} | Status: ${event.status} | 
-                            ${new Date(event.created_at).toLocaleString()}
+                    <div class="timeline-event rollback">
+                        <div class="timeline-time">${new Date(event.created_at).toLocaleString()}</div>
+                        <div class="timeline-content">
+                            <div class="timeline-title">Rollback to Version ${event.target_version_id}</div>
+                            <div class="timeline-desc">
+                                Trigger: ${event.trigger_type} | Status: ${event.status}
+                                ${event.trigger_reason ? `<br>${event.trigger_reason}` : ''}
+                            </div>
                         </div>
                     </div>
                 `).join('');
@@ -769,27 +1060,82 @@
             const container = document.getElementById('overviewContainer');
             container.innerHTML = '<div class="loading">Loading system overview...</div>';
             
-            const [metrics, alerts] = await Promise.all([
+            const [metrics, alerts, history] = await Promise.all([
                 fetchAPI('/api/drift/metrics'),
-                fetchAPI('/api/drift/alerts?status=active')
+                fetchAPI('/api/drift/alerts?status=active'),
+                fetchAPI('/api/rollback/history?limit=5')
             ]);
             
             let html = '<h2>System Overview</h2>';
+            html += '<div class="metrics-grid">';
             
             if (metrics) {
-                html += `<div class="metric-card" style="margin-bottom: 1rem;">
-                    <div class="metric-label">Last Metrics Update</div>
-                    <div class="metric-value">${new Date(metrics.timestamp).toLocaleString()}</div>
-                    <div class="metric-status">Sample Size: ${metrics.sample_size || 0}</div>
+                const status = (alerts && alerts.length > 0) ? 
+                    (alerts.some(a => a.severity.toLowerCase() === 'emergency') ? 'emergency' :
+                     alerts.some(a => a.severity.toLowerCase() === 'critical') ? 'critical' : 'warning') : 'normal';
+                
+                html += `<div class="metric-card ${status}">
+                    <div class="metric-label">System Status</div>
+                    <div class="metric-value">${status === 'normal' ? 'Healthy' : status.charAt(0).toUpperCase() + status.slice(1)}</div>
+                    <div class="metric-status">${alerts ? alerts.length : 0} active alerts</div>
+                </div>`;
+                
+                html += `<div class="metric-card">
+                    <div class="metric-label">Total Queries Processed</div>
+                    <div class="metric-value">${(metrics.total_queries || 0).toLocaleString()}</div>
+                    <div class="metric-status">Since deployment</div>
+                </div>`;
+                
+                html += `<div class="metric-card">
+                    <div class="metric-label">Last Updated</div>
+                    <div class="metric-value">${new Date(metrics.timestamp).toLocaleTimeString()}</div>
+                    <div class="metric-status">${new Date(metrics.timestamp).toLocaleDateString()}</div>
                 </div>`;
             }
             
+            html += '</div>';
+            
+            // System timeline
+            html += '<h3 style="margin-top: 2rem; margin-bottom: 1rem;">Recent Activity</h3>';
+            
+            const events = [];
+            
             if (alerts) {
-                html += `<div class="metric-card ${alerts.length > 0 ? 'warning' : ''}" style="margin-bottom: 1rem;">
-                    <div class="metric-label">Active Alerts</div>
-                    <div class="metric-value">${alerts.length}</div>
-                    <div class="metric-status">${alerts.length === 0 ? 'No issues detected' : 'Action required'}</div>
-                </div>`;
+                alerts.slice(0, 5).forEach(a => {
+                    events.push({
+                        time: new Date(a.created_at),
+                        type: a.severity.toLowerCase(),
+                        title: `${a.severity} Alert: ${a.metric_name}`,
+                        desc: `Value: ${a.metric_value.toFixed(4)} (threshold: ${a.threshold_value.toFixed(4)})`
+                    });
+                });
+            }
+            
+            if (history) {
+                history.forEach(r => {
+                    events.push({
+                        time: new Date(r.created_at),
+                        type: 'rollback',
+                        title: `Rollback Executed`,
+                        desc: `Restored to version ${r.target_version_id} - ${r.trigger_type}`
+                    });
+                });
+            }
+            
+            events.sort((a, b) => b.time - a.time);
+            
+            if (events.length > 0) {
+                html += events.slice(0, 8).map(e => `
+                    <div class="timeline-event ${e.type}">
+                        <div class="timeline-time">${e.time.toLocaleString()}</div>
+                        <div class="timeline-content">
+                            <div class="timeline-title">${e.title}</div>
+                            <div class="timeline-desc">${e.desc}</div>
+                        </div>
+                    </div>
+                `).join('');
+            } else {
+                html += '<div style="padding: 1rem; color: #B7B7B7;">No recent activity</div>';
             }
             
             container.innerHTML = html;
@@ -810,9 +1156,7 @@
         
         // Initialize
         loadData();
-        
-        // Auto-refresh every 30 seconds
-        refreshInterval = setInterval(loadData, 30000);
+        startAutoRefresh();
     </script>
 </body>
 </html>

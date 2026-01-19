@@ -131,10 +131,13 @@ def get_alerts(
     severity: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
-    """Get drift alerts, optionally filtered by status and severity"""
+    """Get drift alerts, optionally filtered by status and severity.
+    Use status=all to get all alerts regardless of status.
+    """
     query = db.query(DriftAlert)
     
-    if status:
+    # Filter by status unless "all" is specified
+    if status and status.lower() != "all":
         query = query.filter(DriftAlert.status == status)
     if severity:
         query = query.filter(DriftAlert.severity == severity)
