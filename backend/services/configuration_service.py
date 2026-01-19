@@ -85,6 +85,13 @@ class ConfigurationService:
         )
         
         self.db.add(config_version)
+        self.db.flush()  # Flush to get the ID
+        
+        # Link current config to this snapshot if it doesn't have a version yet
+        if not current.current_version_id:
+            current.current_version_id = config_version.id
+            current.updated_at = datetime.now()
+        
         self.db.commit()
         self.db.refresh(config_version)
         
@@ -166,6 +173,7 @@ class ConfigurationService:
         current.prompt_template = version.prompt_template
         current.similarity_threshold = version.similarity_threshold
         current.confidence_threshold = version.confidence_threshold
+        current.current_version_id = version_id  # Link current config to the version it's based on
         current.updated_at = datetime.now()
         
         self.db.commit()

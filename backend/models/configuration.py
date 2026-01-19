@@ -14,11 +14,21 @@ class Configuration(Base):
     similarity_threshold = Column(Float, default=0.75)
     confidence_threshold = Column(Float, default=0.70)
     is_current = Column(Boolean, default=True, index=True)
+    current_version_id = Column(Integer, ForeignKey("config_versions.id"), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
     # Relationships
-    versions = relationship("ConfigVersion", back_populates="configuration")
+    versions = relationship(
+        "ConfigVersion", 
+        back_populates="configuration",
+        foreign_keys="[ConfigVersion.configuration_id]"
+    )
+    current_version = relationship(
+        "ConfigVersion",
+        primaryjoin="Configuration.current_version_id == ConfigVersion.id",
+        uselist=False
+    )
 
 class ConfigVersion(Base):
     """Versioned snapshots of configurations"""
@@ -42,4 +52,8 @@ class ConfigVersion(Base):
     is_known_good = Column(Boolean, default=False, index=True)  # Mark stable versions
     
     # Relationships
-    configuration = relationship("Configuration", back_populates="versions")
+    configuration = relationship(
+        "Configuration", 
+        back_populates="versions",
+        foreign_keys="[ConfigVersion.configuration_id]"
+    )

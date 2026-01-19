@@ -95,12 +95,12 @@ def get_rollback_history(limit: int = 100, db: Session = Depends(get_db)):
     return [
         {
             "id": e.id,
-            "trigger_type": e.trigger_type.value,
+            "trigger_type": e.trigger_type.value if e.trigger_type else None,
             "trigger_reason": e.trigger_reason,
-            "status": e.status.value,
+            "status": e.status.value if e.status else None,
             "previous_version_id": e.previous_version_id,
             "restored_version_id": e.restored_version_id,
-            "executed_at": e.executed_at.isoformat(),
+            "executed_at": e.executed_at.isoformat() if e.executed_at else None,
             "executed_by": e.executed_by,
             "components_restored": e.components_restored
         }
@@ -116,12 +116,21 @@ def get_current_config(db: Session = Depends(get_db)):
     if not config:
         raise HTTPException(status_code=404, detail="No configuration found")
     
+    # Get version label if current config is linked to a version
+    version_label = None
+    if config.current_version_id:
+        version = service.get_version_by_id(config.current_version_id)
+        if version:
+            version_label = version.version_label
+    
     return {
         "id": config.id,
         "embedding_model": config.embedding_model,
         "prompt_template": config.prompt_template,
         "similarity_threshold": config.similarity_threshold,
         "confidence_threshold": config.confidence_threshold,
+        "current_version_id": config.current_version_id,
+        "version_label": version_label,
         "created_at": config.created_at.isoformat() if config.created_at else None,
         "updated_at": config.updated_at.isoformat() if config.updated_at else None
     }

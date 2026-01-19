@@ -1,7 +1,7 @@
 """FastAPI endpoints for drift detection"""
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, and_
 from typing import List, Optional
 from datetime import datetime
 
@@ -241,6 +241,45 @@ def get_alert_diagnostics(alert_id: int, db: Session = Depends(get_db)):
         },
         "diagnostics": explanation
     }
+
+@router.get("/alerts/{alert_id}/queries")
+def get_alert_queries(alert_id: int, limit: int = 50, db: Session = Depends(get_db)):
+    """
+    Get queries from the time window that caused this alert.
+    Optionally identify outlier queries that contributed to drift.
+    """
+    alert = db.query(DriftAlert).filter(DriftAlert.id == alert_id).first()
+    if not alert:
+        raise HTTPException(status_code=404, detail="Alert not found")
+    
+    # Get drift metric to find time window
+    drift_metric = None
+    if alert.drift_metric_id:
+        drift_metric = db.query(DriftMetric).filter(DriftMetric.id == alert.drift_metric_id).first()
+    
+    if not drift_metric:
+        raise HTTPException(status_code=404, detail="Drift metric not found")
+    
+    # Get queries from that window
+    queries = db.query(QueryLog).filter(
+        and_(
+            QueryLog.timestamp >= drift_metric.window_start,
+            QueryLog.timestamp < drift_metric.window_end
+        )
+    ).order_by(QueryLog.timestamp.desc()).limit(limit).all()
+    
+    return [
+        {
+            "id": q.id,
+            "query": q.query,
+            "query_category": q.query_category,
+            "confidence_score": q.confidence_score,
+            "timestamp": q.timestamp.isoformat() if q.timestamp else None,
+            "department": q.department,
+            "patient_population": q.patient_population
+        }
+        for q in queries
+    ]
 
 @router.post("/alerts/{alert_id}/dismiss")
 def dismiss_alert(alert_id: int, db: Session = Depends(get_db)):

@@ -1059,8 +1059,143 @@ class DriftDetectionService:
                 "recommended_action": "investigate" if alert.severity.value == "warning" else "rollback_consideration" if alert.severity.value == "critical" else "immediate_rollback"
             }
             explanation["recommendations"] = [r for r in explanation["recommendations"] if r is not None]
+        
+        # Add outlier queries to explanation
+        try:
+            outlier_queries = self.identify_outlier_queries(alert, drift_metric, top_n=10)
+            explanation["outlier_queries"] = outlier_queries
+            explanation["outlier_count"] = len(outlier_queries)
+        except Exception as e:
+            # If outlier detection fails, continue without it
+            explanation["outlier_queries"] = []
+            explanation["outlier_count"] = 0
 
         return explanation
+    
+    def identify_outlier_queries(
+        self, 
+        alert: DriftAlert, 
+        drift_metric: DriftMetric,
+        top_n: int = 10
+    ) -> List[Dict]:
+        """
+        Identify queries that contributed most to drift.
+        Returns top N outlier queries based on deviation from baseline.
+        
+        Args:
+            alert: The drift alert
+            drift_metric: The drift metric containing window information
+            top_n: Number of top outliers to return
+            
+        Returns:
+            List of dictionaries with outlier query information
+        """
+        # Get baseline queries
+        baseline_queries = self.get_baseline_queries()
+        window_queries = self.get_window_queries(
+            drift_metric.window_start, 
+            drift_metric.window_end
+        )
+        
+        outliers = []
+        
+        if alert.metric_name == "psi_score":
+            # For PSI: Find queries with unusual lengths compared to baseline
+            baseline_lengths = [len(q.query) for q in baseline_queries if q.query]
+            if not baseline_lengths:
+                return []
+            
+            baseline_mean = np.mean(baseline_lengths)
+            baseline_std = np.std(baseline_lengths) if len(baseline_lengths) > 1 else 1.0
+            
+            for q in window_queries:
+                if not q.query:
+                    continue
+                length = len(q.query)
+                # Z-score: how many standard deviations from baseline mean
+                z_score = abs((length - baseline_mean) / baseline_std) if baseline_std > 0 else 0
+                outliers.append({
+                    "query_id": q.id,
+                    "query": q.query[:200] if len(q.query) > 200 else q.query,  # Truncate for display
+                    "query_category": q.query_category or "N/A",
+                    "deviation_score": float(z_score),
+                    "reason": f"Query length ({length}) deviates from baseline (mean: {baseline_mean:.1f})",
+                    "timestamp": q.timestamp.isoformat() if q.timestamp else None,
+                    "confidence_score": self._safe_float(q.confidence_score) if q.confidence_score else None
+                })
+        
+        elif alert.metric_name == "ks_p_value":
+            # For KS: Find queries with unusual confidence scores
+            baseline_confidences = []
+            for q in baseline_queries:
+                if q.confidence_score:
+                    conf = self._safe_float(q.confidence_score)
+                    if 0 <= conf <= 1:
+                        baseline_confidences.append(conf)
+            
+            if not baseline_confidences:
+                return []
+            
+            baseline_mean = np.mean(baseline_confidences)
+            baseline_std = np.std(baseline_confidences) if len(baseline_confidences) > 1 else 0.1
+            
+            for q in window_queries:
+                if not q.confidence_score:
+                    continue
+                conf = self._safe_float(q.confidence_score)
+                if not (0 <= conf <= 1):
+                    continue
+                z_score = abs((conf - baseline_mean) / baseline_std) if baseline_std > 0 else 0
+                outliers.append({
+                    "query_id": q.id,
+                    "query": q.query[:200] if q.query and len(q.query) > 200 else (q.query or ""),
+                    "query_category": q.query_category or "N/A",
+                    "confidence_score": conf,
+                    "deviation_score": float(z_score),
+                    "reason": f"Confidence ({conf:.3f}) deviates from baseline (mean: {baseline_mean:.3f})",
+                    "timestamp": q.timestamp.isoformat() if q.timestamp else None
+                })
+        
+        elif alert.metric_name in ["js_divergence", "wasserstein_distance"]:
+            # For embedding drift: Find queries with unusual categories or patterns
+            # Since we don't have embedding comparison per query, use category shifts
+            baseline_categories = {}
+            window_categories = {}
+            
+            for q in baseline_queries:
+                cat = q.query_category or "unknown"
+                baseline_categories[cat] = baseline_categories.get(cat, 0) + 1
+            
+            for q in window_queries:
+                cat = q.query_category or "unknown"
+                window_categories[cat] = window_categories.get(cat, 0) + 1
+            
+            baseline_total = sum(baseline_categories.values()) if baseline_categories else 1
+            window_total = sum(window_categories.values()) if window_categories else 1
+            
+            # Find categories that increased significantly
+            for cat in window_categories:
+                baseline_pct = (baseline_categories.get(cat, 0) / baseline_total * 100) if baseline_total > 0 else 0
+                window_pct = (window_categories[cat] / window_total * 100) if window_total > 0 else 0
+                shift = window_pct - baseline_pct
+                
+                # Get queries from this category
+                if shift > 5:  # Significant increase
+                    cat_queries = [q for q in window_queries if (q.query_category or "unknown") == cat]
+                    for q in cat_queries[:5]:  # Limit per category
+                        outliers.append({
+                            "query_id": q.id,
+                            "query": q.query[:200] if q.query and len(q.query) > 200 else (q.query or ""),
+                            "query_category": cat,
+                            "deviation_score": float(shift),
+                            "reason": f"Category '{cat}' increased from {baseline_pct:.1f}% to {window_pct:.1f}%",
+                            "timestamp": q.timestamp.isoformat() if q.timestamp else None,
+                            "confidence_score": self._safe_float(q.confidence_score) if q.confidence_score else None
+                        })
+        
+        # Sort by deviation score and return top N
+        outliers.sort(key=lambda x: x["deviation_score"], reverse=True)
+        return outliers[:top_n]
     
     def detect_segment_drift(self, segment_field: str = "query_category") -> Dict:
         """

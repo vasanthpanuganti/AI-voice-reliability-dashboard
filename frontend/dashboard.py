@@ -24,6 +24,19 @@ def safe_parse_datetime(dt_string):
         except (ValueError, TypeError):
             return datetime.now()
 
+def format_datetime_local(dt_string, format_str="%m/%d/%Y, %I:%M:%S %p"):
+    """Format datetime string to local time in readable format."""
+    if not dt_string:
+        return "N/A"
+    try:
+        dt = safe_parse_datetime(dt_string)
+        # Convert to local time if it has timezone info
+        if dt.tzinfo:
+            dt = dt.astimezone()  # Convert to local timezone
+        return dt.strftime(format_str)
+    except (ValueError, TypeError, AttributeError):
+        return "Invalid Date"
+
 st.set_page_config(
     page_title="AI Pipeline Resilience Dashboard",
     page_icon=None,
@@ -131,32 +144,80 @@ def _get_grafana_theme_css():
         box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
     }
     
-    /* Info boxes - flat colors */
+    /* Info boxes - improved readability with better backgrounds */
     [data-testid="stInfo"] {
-        background-color: #1a1a1a;
-        border: 1px solid #2a2a2a;
+        background-color: #2a2a2a !important;
+        border: 1px solid #404040 !important;
+        color: #e0e0e0 !important;
+    }
+    
+    [data-testid="stInfo"] p, [data-testid="stInfo"] div, [data-testid="stInfo"] span {
+        color: #e0e0e0 !important;
     }
     
     [data-testid="stSuccess"] {
-        background-color: #1a1a1a;
-        border: 1px solid #73BF69;
+        background-color: #1e3a1e !important;
+        border: 1px solid #73BF69 !important;
+        color: #e0e0e0 !important;
+    }
+    
+    [data-testid="stSuccess"] p, [data-testid="stSuccess"] div, [data-testid="stSuccess"] span {
+        color: #e0e0e0 !important;
     }
     
     [data-testid="stWarning"] {
-        background-color: #1a1a1a;
-        border: 1px solid #F79420;
+        background-color: #3a2a1a !important;
+        border: 1px solid #F79420 !important;
+        color: #ffffff !important;
+    }
+    
+    [data-testid="stWarning"] p, [data-testid="stWarning"] div, [data-testid="stWarning"] span {
+        color: #ffffff !important;
     }
     
     [data-testid="stError"] {
-        background-color: #1a1a1a;
-        border: 1px solid #E24D42;
+        background-color: #3a1a1a !important;
+        border: 1px solid #E24D42 !important;
+        color: #ffffff !important;
     }
     
-    /* Expander styling */
+    [data-testid="stError"] p, [data-testid="stError"] div, [data-testid="stError"] span {
+        color: #ffffff !important;
+    }
+    
+    /* Expander styling - improved readability */
     [data-testid="stExpander"] {
-        background-color: #2d2d2d;
-        border: 1px solid #404040;
+        background-color: #2d2d2d !important;
+        border: 1px solid #404040 !important;
         border-radius: 6px;
+    }
+    
+    /* Expander content - ensure readable text */
+    [data-testid="stExpander"] > div {
+        background-color: #2d2d2d !important;
+    }
+    
+    [data-testid="stExpander"] p, 
+    [data-testid="stExpander"] div, 
+    [data-testid="stExpander"] span,
+    [data-testid="stExpander"] label {
+        color: #e0e0e0 !important;
+    }
+    
+    [data-testid="stExpander"] h1,
+    [data-testid="stExpander"] h2,
+    [data-testid="stExpander"] h3,
+    [data-testid="stExpander"] h4,
+    [data-testid="stExpander"] h5,
+    [data-testid="stExpander"] h6 {
+        color: #ffffff !important;
+    }
+    
+    /* Expander header/title - ensure readable */
+    [data-testid="stExpander"] summary,
+    [data-testid="stExpander"] [role="button"] {
+        color: #ffffff !important;
+        background-color: #2d2d2d !important;
     }
     
     /* Code blocks - sharp design with dark theme for readability */
@@ -218,10 +279,86 @@ def _get_grafana_theme_css():
         background: #404040;
     }
     
-    /* Expander styling - sharp */
-    [data-testid="stExpander"] {
-        border: 1px solid #2a2a2a;
-        border-radius: 0px;
+    /* Additional expander content styling for better readability */
+    [data-testid="stExpander"] .streamlit-expanderContent {
+        background-color: #2d2d2d !important;
+        color: #e0e0e0 !important;
+    }
+    
+    /* Ensure all text in expanders is readable */
+    [data-testid="stExpander"] * {
+        color: inherit;
+    }
+    
+    /* Metric values and labels in expanders */
+    [data-testid="stExpander"] [data-testid="stMetricValue"] {
+        color: #ffffff !important;
+    }
+    
+    [data-testid="stExpander"] [data-testid="stMetricLabel"] {
+        color: #b7b7b7 !important;
+    }
+    
+    /* Button text in expanders */
+    [data-testid="stExpander"] button {
+        color: #ffffff !important;
+    }
+    
+    /* Streamlit markdown containers in expanders */
+    [data-testid="stExpander"] [data-testid="stMarkdownContainer"] {
+        background-color: #2d2d2d !important;
+        color: #e0e0e0 !important;
+    }
+    
+    [data-testid="stExpander"] [data-testid="stMarkdownContainer"] p,
+    [data-testid="stExpander"] [data-testid="stMarkdownContainer"] div,
+    [data-testid="stExpander"] [data-testid="stMarkdownContainer"] span {
+        color: #e0e0e0 !important;
+    }
+    
+    /* Strong/bold text in expanders */
+    [data-testid="stExpander"] strong {
+        color: #ffffff !important;
+    }
+    
+    /* Code elements in expanders */
+    [data-testid="stExpander"] code {
+        background-color: #1e1e1e !important;
+        color: #e0e0e0 !important;
+    }
+    
+    /* Ensure Streamlit's internal text elements are readable */
+    .element-container {
+        color: #e0e0e0 !important;
+    }
+    
+    /* Dataframe styling in expanders */
+    [data-testid="stExpander"] [data-testid="stDataFrame"] {
+        background-color: #2d2d2d !important;
+    }
+    
+    /* Column content in expanders */
+    [data-testid="stExpander"] [data-testid="column"] {
+        background-color: transparent !important;
+    }
+    
+    /* All text elements should be readable by default */
+    .main .block-container {
+        color: #e0e0e0 !important;
+    }
+    
+    /* Override any Streamlit default text colors */
+    .stMarkdown {
+        color: #e0e0e0 !important;
+    }
+    
+    .stMarkdown p, .stMarkdown div, .stMarkdown span {
+        color: #e0e0e0 !important;
+    }
+    
+    /* Caption text */
+    [data-testid="stCaption"] {
+        color: #b7b7b7 !important;
     }
     
     /* Info tooltip styles */
@@ -410,7 +547,7 @@ def show_info_expander(key: str, label: str = "Info: What does this mean?"):
         st.markdown(f"**What to do:** {info.get('action', '')}")
 
 
-def make_api_request(endpoint: str, method: str = "GET", json_data: dict = None, timeout: int = 10):
+def make_api_request(endpoint: str, method: str = "GET", json_data: dict = None, timeout: int = 30):
     """Make API request with error handling and timeout"""
     try:
         url = f"{API_BASE_URL}{endpoint}"
@@ -421,7 +558,7 @@ def make_api_request(endpoint: str, method: str = "GET", json_data: dict = None,
         response.raise_for_status()
         return response.json()
     except requests.exceptions.Timeout:
-        st.error(f"API request timed out. Is the API server running at {API_BASE_URL}?")
+        st.error(f"API request timed out after {timeout}s. The API might be computing metrics. Please wait and refresh.")
         return None
     except requests.exceptions.ConnectionError:
         st.error(f"Unable to connect to API at {API_BASE_URL}. Make sure the API server is running.")
@@ -435,7 +572,7 @@ def make_api_request(endpoint: str, method: str = "GET", json_data: dict = None,
 
 
 def make_api_request_with_retry(endpoint: str, method: str = "GET", json_data: dict = None,
-                                 timeout: int = 10, max_retries: int = 2):
+                                 timeout: int = 30, max_retries: int = 2):
     """Make API request with automatic retry on transient failures."""
     for attempt in range(max_retries):
         result = make_api_request(endpoint, method, json_data, timeout)
@@ -444,6 +581,15 @@ def make_api_request_with_retry(endpoint: str, method: str = "GET", json_data: d
         if attempt < max_retries - 1:
             time.sleep(1)
     return None
+
+
+def check_api_health(timeout: int = 5) -> bool:
+    """Check if API is healthy before making requests"""
+    try:
+        response = requests.get(f"{API_BASE_URL}/health", timeout=timeout)
+        return response.status_code == 200
+    except (requests.exceptions.RequestException, Exception):
+        return False
 
 
 @st.cache_data(ttl=30)
@@ -460,6 +606,11 @@ def get_alerts(status: str = "active"):
 def get_alert_diagnostics(alert_id: int):
     """Get detailed diagnostics for an alert"""
     return make_api_request(f"/api/drift/alerts/{alert_id}/diagnostics")
+
+@st.cache_data(ttl=60)
+def get_alert_queries(alert_id: int, limit: int = 100):
+    """Get queries from the alert window"""
+    return make_api_request(f"/api/drift/alerts/{alert_id}/queries?limit={limit}")
 
 @st.cache_data(ttl=30)
 def get_drift_history(limit: int = 100):
@@ -646,13 +797,9 @@ def main():
     
     with col_header2:
         # API status indicator
-        try:
-            health = make_api_request("/health", timeout=2)
-            status_color = "#73BF69" if health else "#E24D42"
-            status_text = "Healthy" if health else "Offline"
-        except:
-            status_color = "#E24D42"
-            status_text = "Offline"
+        api_healthy = check_api_health(timeout=3)
+        status_color = "#73BF69" if api_healthy else "#E24D42"
+        status_text = "Healthy" if api_healthy else "Offline"
         
         st.markdown(f"""
         <div style="text-align: right; margin-top: 20px;">
@@ -721,13 +868,21 @@ def main():
         - 0.70-0.85: May need validation
         - 0.50-0.70: Likely needs human
         - <0.30: Always escalate
-        
+
         **Risk Penalties**
         - Critical topics: -35%
         - High risk: -20%
         - Medium risk: -10%
         """)
-    
+
+    # Check API health before proceeding
+    if not api_healthy:
+        st.warning("⚠️ API server is not responding. Please ensure it's running.")
+        st.info(f"**To start the API:**\n```bash\npython run_api.py\n```")
+        st.info(f"**Verify API health:** {API_BASE_URL}/health")
+        # Don't stop completely, but show warning prominently
+        st.markdown("---")
+
     if page == "Drift Detection":
         show_drift_detection_page()
     elif page == "Segment Analysis":
@@ -865,10 +1020,9 @@ def show_drift_detection_page():
             
             diagnostics = get_alert_diagnostics(alert_id)
             
-            with st.expander(
-                f"ALERT: {alert['metric_name'].upper()} - {severity.upper()} (Value: {alert['metric_value']:.4f})",
-                expanded=True
-            ):
+            expander_title = f"ALERT: {alert['metric_name'].upper()} - {severity.upper()} (Value: {alert['metric_value']:.4f})"
+            
+            with st.expander(expander_title, expanded=True):
                 col1, col2, col3 = st.columns([2, 2, 1])
                 
                 with col1:
@@ -878,8 +1032,8 @@ def show_drift_detection_page():
                     st.markdown(f"**Type:** {alert['metric_type']}")
                 
                 with col2:
-                    created_at = safe_parse_datetime(alert.get("created_at"))
-                    st.markdown(f"**Created:** {created_at.strftime('%Y-%m-%d %H:%M:%S')}")
+                    created_at_display = format_datetime_local(alert.get("created_at"))
+                    st.markdown(f"**Created:** {created_at_display}")
                     st.markdown(f'<span style="color:{color};font-weight:bold;font-size:18px;">{severity.upper()}</span>', unsafe_allow_html=True)
                 
                 with col3:
@@ -914,6 +1068,56 @@ def show_drift_detection_page():
                         st.markdown("#### Recommended Actions")
                         for i, rec in enumerate(diag["recommendations"], 1):
                             st.markdown(f"{i}. {rec}")
+                    
+                    # Show outlier queries that contributed to drift
+                    if "outlier_queries" in diag and diag["outlier_queries"]:
+                        st.markdown("---")
+                        st.markdown("#### Queries That Contributed to Drift")
+                        outlier_count = diag.get("outlier_count", len(diag["outlier_queries"]))
+                        st.info(f"Found {outlier_count} queries that significantly deviated from baseline patterns.")
+                        
+                        # Display outlier queries in expandable sections
+                        for idx, outlier in enumerate(diag["outlier_queries"]):
+                            with st.expander(
+                                f"Query #{outlier['query_id']} - Deviation Score: {outlier['deviation_score']:.2f}",
+                                expanded=(idx < 3)  # Expand first 3 by default
+                            ):
+                                col1, col2 = st.columns([2, 1])
+                                with col1:
+                                    st.markdown(f"**Query:** {outlier['query']}")
+                                    st.markdown(f"**Category:** {outlier.get('query_category', 'N/A')}")
+                                    st.markdown(f"**Reason:** {outlier.get('reason', 'N/A')}")
+                                with col2:
+                                    if 'confidence_score' in outlier and outlier['confidence_score'] is not None:
+                                        try:
+                                            conf_value = float(outlier['confidence_score'])
+                                            st.metric("Confidence", f"{conf_value:.3f}")
+                                        except (ValueError, TypeError):
+                                            st.metric("Confidence", str(outlier['confidence_score']))
+                                    if outlier.get('timestamp'):
+                                        st.caption(f"Time: {format_datetime_local(outlier['timestamp'])}")
+                    
+                    # Button to view all queries from this window
+                    st.markdown("---")
+                    if st.button("View All Queries from This Window", key=f"view_queries_{alert_id}"):
+                        queries = get_alert_queries(alert_id, limit=100)
+                        if queries:
+                            st.markdown("#### All Queries from Alert Window")
+                            queries_df = pd.DataFrame(queries)
+                            # Format timestamp for display
+                            if 'timestamp' in queries_df.columns:
+                                queries_df['timestamp'] = queries_df['timestamp'].apply(
+                                    lambda x: format_datetime_local(x) if x else "N/A"
+                                )
+                            display_cols = ['query', 'query_category', 'confidence_score', 'timestamp']
+                            available_cols = [col for col in display_cols if col in queries_df.columns]
+                            st.dataframe(
+                                queries_df[available_cols],
+                                use_container_width=True,
+                                height=400
+                            )
+                        else:
+                            st.info("No queries found for this alert window.")
                 
                 st.divider()
     else:
@@ -1229,8 +1433,17 @@ def show_rollback_page():
     if current_config:
         col1, col2 = st.columns([2, 1])
         with col1:
+            version_label = current_config.get('version_label', 'N/A')
+            version_display = f"v{version_label}" if version_label != 'N/A' else "vN/A"
+            
+            # Get active since date (use updated_at if available, otherwise created_at)
+            active_since = current_config.get('updated_at') or current_config.get('created_at')
+            active_since_display = format_datetime_local(active_since) if active_since else "N/A"
+            
             st.markdown(f"""
             <div style="background: #2d2d2d; border: 1px solid #404040; border-radius: 8px; padding: 20px;">
+                <p style="color: #B7B7B7; margin: 8px 0;"><strong style="color: #FFFFFF;">Version:</strong> <code style="background: #1e1e1e; padding: 2px 8px; border-radius: 4px;">{version_display}</code></p>
+                <p style="color: #B7B7B7; margin: 8px 0; font-size: 12px;">Active since: {active_since_display}</p>
                 <p style="color: #B7B7B7; margin: 8px 0;"><strong style="color: #FFFFFF;">Embedding Model:</strong> <code style="background: #1e1e1e; padding: 2px 8px; border-radius: 4px;">{current_config.get('embedding_model', 'N/A')}</code></p>
                 <p style="color: #B7B7B7; margin: 8px 0;"><strong style="color: #FFFFFF;">Similarity Threshold:</strong> <code style="background: #1e1e1e; padding: 2px 8px; border-radius: 4px;">{current_config.get('similarity_threshold', 'N/A')}</code></p>
                 <p style="color: #B7B7B7; margin: 8px 0;"><strong style="color: #FFFFFF;">Confidence Threshold:</strong> <code style="background: #1e1e1e; padding: 2px 8px; border-radius: 4px;">{current_config.get('confidence_threshold', 'N/A')}</code></p>
@@ -1270,7 +1483,8 @@ def show_rollback_page():
             versions_df = versions_df[versions_df["is_known_good"] == True]
         
         for _, version in versions_df.head(20).iterrows():
-            with st.expander(f"Version {version['id']}: {version.get('version_label', 'N/A')} - {version['snapshot_timestamp'][:19]}"):
+            snapshot_time = format_datetime_local(version.get('snapshot_timestamp'))
+            with st.expander(f"Version {version['id']}: {version.get('version_label', 'N/A')} - {snapshot_time}"):
                 col1, col2 = st.columns([3, 1])
                 
                 with col1:
@@ -1359,6 +1573,10 @@ def show_rollback_page():
     if rollback_history:
         history_df = pd.DataFrame(rollback_history)
         
+        # Get versions to look up version labels
+        versions = get_config_versions()
+        version_lookup = {v['id']: v.get('version_label', f"Version {v['id']}") for v in versions} if versions else {}
+        
         status_colors = {
             "success": "#73BF69",
             "failed": "#E24D42",
@@ -1370,12 +1588,22 @@ def show_rollback_page():
             status = event.get("status", "pending")
             color = status_colors.get(status.lower(), "#808080")
             
+            # Format date properly
+            executed_at = format_datetime_local(event.get('executed_at'))
+            
+            # Get version label
+            restored_version_id = event.get('restored_version_id')
+            version_label = version_lookup.get(restored_version_id, f"Version {restored_version_id}" if restored_version_id else "N/A")
+            
+            trigger_type = event.get('trigger_type', 'N/A')
+            trigger_reason = event.get('trigger_reason', 'N/A')
+            
             st.markdown(f"""
             <div style="background: #2d2d2d; border: 1px solid #404040; border-radius: 6px; padding: 15px; margin: 10px 0;">
-                <p style="color: #FFFFFF; margin: 5px 0; font-weight: 600;">Rollback #{event['id']} - {event['executed_at'][:19]}</p>
-                <p style="color: #B7B7B7; margin: 5px 0;">Type: {event['trigger_type']} | Status: <span style="color: {color};">{status}</span></p>
-                <p style="color: #B7B7B7; margin: 5px 0;">Reason: {event.get('trigger_reason', 'N/A')}</p>
-                <p style="color: #B7B7B7; margin: 5px 0;">Restored Version: {event['restored_version_id']}</p>
+                <p style="color: #FFFFFF; margin: 5px 0; font-weight: 600;">Rollback #{event['id']} - {executed_at}</p>
+                <p style="color: #B7B7B7; margin: 5px 0;">Type: {trigger_type} | Status: <span style="color: {color};">{status}</span></p>
+                <p style="color: #B7B7B7; margin: 5px 0;">Reason: {trigger_reason}</p>
+                <p style="color: #B7B7B7; margin: 5px 0;">Restored to version: {version_label}</p>
             </div>
             """, unsafe_allow_html=True)
     else:
