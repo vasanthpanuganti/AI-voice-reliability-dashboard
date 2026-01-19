@@ -1,232 +1,118 @@
 # AI Pipeline Resilience Dashboard
 
-Drift Detection and Rollback System for Healthcare AI Pipelines
+A monitoring system that detects when AI models start behaving differently and automatically restores them to a working state.
 
-## Problem Statement
+## What This Does
 
-Healthcare AI systems need to detect when input data distributions shift from training baselines (drift) and automatically recover by rolling back to known-good configurations. This dashboard demonstrates:
+Healthcare AI systems can degrade over time when the data they receive changes from what they were trained on. This is called "drift." This dashboard:
 
-1. **Drift Detection** - Monitor input, output, and embedding space shifts using statistical methods
-2. **Automated Alerts** - Generate alerts when thresholds are breached (Warning → Critical → Emergency)
-3. **Automated Rollback** - Automatically restore previous known-good configurations when critical drift is detected
+1. Monitors AI system behavior in real-time
+2. Alerts you when something goes wrong (Warning, Critical, Emergency levels)
+3. Automatically restores the system to a previous working configuration
 
 ## Quick Start
 
-### Prerequisites
+### Requirements
 
-- Python 3.9+
-- PostgreSQL 12+ (or use SQLite for development)
+- Python 3.9 or higher
+- PostgreSQL 12 or higher (or SQLite for testing)
 
-### Setup
+### Installation
 
 ```bash
-# 1. Create PostgreSQL database
-createdb ai_resilience_db
-# Or via psql:
-# CREATE DATABASE ai_resilience_db;
-
-# 2. Set environment variable (optional - PostgreSQL is default)
-# Create .env file with:
-# DATABASE_URL=postgresql://postgres:postgres@localhost:5432/ai_resilience_db
-# 
-# For SQLite development (optional):
-# DATABASE_URL=sqlite:///./ai_resilience.db
-
-# 3. Install dependencies
 pip install -r requirements.txt
-
-# 4. Initialize database and generate sample data
 python scripts/generate_sample_data.py
-
-# 5. Start the API (Terminal 1)
 python run_api.py
-
-# 6. Start the Dashboard (Terminal 2)
-python run_dashboard.py
-
-# 7. Open http://localhost:8501
 ```
+
+Then open http://localhost:8000 in your browser.
 
 ## Features
 
 ### Drift Detection
-- **PSI (Population Stability Index)** - Measures input distribution shift
-- **KS Test (Kolmogorov-Smirnov)** - Detects sharp changes in output distributions
-- **JS Divergence (Jensen-Shannon)** - Measures embedding space drift
-- Real-time monitoring with 15-minute rolling windows
 
-### Alerting System
-| Severity | PSI Threshold | KS p-value | JS Divergence |
-|----------|--------------|------------|---------------|
-| Warning  | > 0.15       | < 0.05     | > 0.1         |
-| Critical | > 0.25       | < 0.01     | > 0.2         |
-| Emergency| > 0.40       | < 0.001    | > 0.3         |
+The system monitors three types of changes:
 
-Each alert includes:
-- What the metric means and why it triggered
-- Baseline vs. current period comparison
-- Category distribution shifts
-- Recommended actions
+| Metric | What It Measures |
+|--------|------------------|
+| PSI (Population Stability Index) | Changes in input patterns |
+| KS Test (Kolmogorov-Smirnov) | Changes in output quality |
+| JS Divergence (Jensen-Shannon) | Changes in how the AI understands queries |
+
+### Alert Levels
+
+| Level | Meaning | Action |
+|-------|---------|--------|
+| Warning | Something may be changing | Monitor closely |
+| Critical | Performance is degrading | Take action soon |
+| Emergency | System needs immediate attention | Automatic rollback triggered |
 
 ### Rollback System
-- **Configuration Versioning** - Snapshot and track all configuration changes
-- **Known-Good Versions** - Mark versions that performed well
-- **Manual Rollback** - One-click restore to any previous version
-- **Automated Rollback** - Auto-restore when critical/emergency alerts trigger
-- **Atomic Operations** - All-or-nothing restoration with audit logging
 
-## Sample Data
+- Save snapshots of working configurations
+- Restore to any previous version with one click
+- Automatic restoration when critical issues are detected
 
-The demo generates realistic healthcare query data:
+## Importing Your Own Data
 
-| Category | Baseline Distribution | Drifted Distribution |
-|----------|----------------------|---------------------|
-| Appointment | 35% | 15% |
-| Prescription | 25% | 15% |
-| Billing | 20% | **50%** (major shift!) |
-| Clinical | 10% | 10% |
-| General | 10% | 10% |
+You can import your own query data from CSV or JSON files.
 
-This simulates a scenario where billing queries suddenly increased from 20% to 50% - triggering drift alerts.
+### Required Fields
 
-## Importing Custom Datasets
+- `query` - The text of the query
+- `timestamp` - When the query occurred
 
-You can import your own query data from CSV or JSON files using the import script.
+### Optional Fields
 
-### Data Format
+- `query_category` - Category (e.g., appointment, billing)
+- `confidence_score` - AI confidence (0.0 to 1.0)
+- `ai_response` - The AI response text
 
-**Required fields:**
-- `query`: The text of the query (required)
-- `timestamp`: When the query occurred (required, ISO 8601 format preferred)
-
-**Optional fields:**
-- `query_category`: Category of the query (e.g., appointment, prescription, billing)
-- `confidence_score`: Confidence score of the AI response (0.0 to 1.0)
-- `ai_response`: The AI's response to the query
-- `embedding`: Pre-computed embedding vector (JSON array). If not provided, will be auto-generated.
-
-### CSV Format
-
-See `data/examples/query_log_template.csv` for an example format:
-
-```csv
-query,timestamp,query_category,confidence_score,ai_response
-"I need to schedule an appointment","2024-01-15T10:30:00",appointment,0.85,"I can help you schedule..."
-```
-
-### JSON Format
-
-```json
-[
-  {
-    "query": "I need to schedule an appointment",
-    "timestamp": "2024-01-15T10:30:00",
-    "query_category": "appointment",
-    "confidence_score": "0.85",
-    "ai_response": "I can help you schedule..."
-  }
-]
-```
-
-### Importing Data
+### Import Command
 
 ```bash
-# Import from CSV
-python scripts/import_custom_data.py --file data/my_queries.csv --format csv
-
-# Import from JSON
-python scripts/import_custom_data.py --file data/my_queries.json --format json
-
-# Clear existing data before importing
-python scripts/import_custom_data.py --file data/my_queries.csv --format csv --clear-existing
+python scripts/import_custom_data.py --file your_data.csv --format csv
 ```
 
-The script will:
-- Validate your data format
-- Auto-generate embeddings if not provided
-- Import data in batches with progress indicators
-- Show any errors encountered during import
+See `data/examples/query_log_template.csv` for the expected format.
 
 ## Project Structure
 
 ```
-ai-resilience-dashboard/
-├── backend/
-│   ├── api/              # FastAPI endpoints
-│   ├── models/           # SQLAlchemy models (PostgreSQL/SQLite)
-│   ├── services/         # Drift detection & rollback logic
-│   └── utils/            # Statistical functions (PSI, KS, JS)
-├── frontend/
-│   └── dashboard.py      # Streamlit UI
-├── scripts/
-│   └── generate_sample_data.py  # Demo data generator
-├── run_api.py            # API server (port 8000)
-└── run_dashboard.py      # Dashboard server (port 8501)
+backend/           API and business logic
+frontend/          Dashboard interface
+scripts/           Data generation and import tools
+run_api.py         Start the API server
+run_dashboard.py   Start the dashboard
 ```
 
-## API Endpoints
+## API Reference
 
-### Drift Detection
-- `GET /api/drift/metrics` - Current drift metrics
-- `GET /api/drift/alerts` - Active alerts
-- `GET /api/drift/history` - Historical drift data
-- `GET /api/drift/alerts/{id}/diagnostics` - Alert explanation
+| Endpoint | Description |
+|----------|-------------|
+| GET /api/drift/metrics | Current drift measurements |
+| GET /api/drift/alerts | Active alerts |
+| GET /api/rollback/versions | Saved configurations |
+| POST /api/rollback/execute | Restore a configuration |
 
-### Rollback
-- `GET /api/rollback/versions` - Configuration versions
-- `GET /api/rollback/current-config` - Current configuration
-- `POST /api/rollback/execute` - Execute rollback
-- `GET /api/rollback/history` - Rollback audit log
-
-## Dashboard Pages
-
-1. **Drift Detection** - Key metrics, active alerts with explanations, historical trends
-2. **Rollback Control** - Current config, version history, rollback execution
-3. **System Overview** - Summary statistics and health metrics
-
-## Technical Details
-
-- **Database**: PostgreSQL (default) or SQLite (for development)
-- **API**: FastAPI with automatic OpenAPI docs at `/docs`
-- **Frontend**: Streamlit for interactive dashboard
-- **Statistical Methods**: PSI, KS Test, Jensen-Shannon Divergence
-
-### Database Configuration
-
-The system uses PostgreSQL by default. To use SQLite for local development, set:
-```bash
-DATABASE_URL=sqlite:///./ai_resilience.db
-```
-
-Default PostgreSQL connection (configured in `backend/config.py`):
-```
-postgresql://postgres:postgres@localhost:5432/ai_resilience_db
-```
-
-## Regenerating Data
-
-To reset and regenerate sample data:
-
-```bash
-# Delete existing database
-rm ai_resilience.db
-
-# Generate fresh sample data
-python scripts/generate_sample_data.py
-```
+Full API documentation available at `/docs` when the server is running.
 
 ## Configuration
 
-Key thresholds in `backend/config.py`:
+Edit `backend/config.py` to adjust alert thresholds:
 
 ```python
-# PSI Thresholds
 PSI_WARNING_THRESHOLD = 0.15
 PSI_CRITICAL_THRESHOLD = 0.25
 PSI_EMERGENCY_THRESHOLD = 0.40
-
-# Rolling window for drift detection
 DRIFT_WINDOW_MINUTES = 15
+```
+
+## Resetting Data
+
+```bash
+rm ai_resilience.db
+python scripts/generate_sample_data.py
 ```
 
 ## License
