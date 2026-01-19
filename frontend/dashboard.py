@@ -26,7 +26,7 @@ def safe_parse_datetime(dt_string):
 
 st.set_page_config(
     page_title="AI Pipeline Resilience Dashboard",
-    page_icon="🔍",
+    page_icon=None,
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -391,7 +391,7 @@ def create_info_button(key: str, inline: bool = True) -> str:
         return tooltip_content
 
 
-def show_info_expander(key: str, label: str = "ℹ️ What does this mean?"):
+def show_info_expander(key: str, label: str = "Info: What does this mean?"):
     """Show info in a Streamlit expander."""
     info = INFO_TOOLTIPS.get(key, {})
     if not info:
@@ -696,7 +696,7 @@ def main():
     
     st.sidebar.markdown("---")
     st.sidebar.markdown("### Quick Help")
-    with st.sidebar.expander("📊 Metric Thresholds"):
+    with st.sidebar.expander("Metric Thresholds"):
         st.markdown("""
         **PSI (Input Drift)**
         - Normal: < 0.10
@@ -714,7 +714,7 @@ def main():
         - Critical: > 0.20
         """)
     
-    with st.sidebar.expander("🔄 Routing Rules"):
+    with st.sidebar.expander("Routing Rules"):
         st.markdown("""
         **Confidence Thresholds**
         - ≥0.85: AI responds directly
@@ -815,15 +815,19 @@ def show_drift_detection_page():
                 st.session_state.query_refresh_attempted = True
                 try:
                     # Automatically refresh queries
-                    refresh_response = make_api_request("/api/drift/refresh-queries", method="POST", timeout=30)
+                    refresh_response = make_api_request(
+                        "/api/drift/refresh-queries", method="POST", timeout=30
+                    )
                     if refresh_response:
-                        st.info(f"🔄 Automatically refreshed queries: {refresh_response.get('message', 'Success')}")
+                        st.info(
+                            f"Queries refreshed successfully: {refresh_response.get('message', 'Success')}"
+                        )
                         # Clear cache and rerun to show updated metrics
                         st.cache_data.clear()
                         time.sleep(1)
                         st.rerun()
                 except Exception as e:
-                    st.warning(f"⚠️ Could not automatically refresh queries: {str(e)}")
+                    st.warning(f"Warning: Could not automatically refresh queries: {str(e)}")
             else:
                 # Reset after a delay (handled by rerun)
                 if "query_refresh_delay" not in st.session_state:
@@ -1001,7 +1005,7 @@ def show_segment_analysis_page():
     </div>
     """, unsafe_allow_html=True)
     
-    show_info_expander("segment_drift", "ℹ️ Why segment-level monitoring matters")
+    show_info_expander("segment_drift", "Info: Why segment-level monitoring matters")
     
     # Segment selection
     segment_by = st.selectbox(
@@ -1105,7 +1109,7 @@ def show_confidence_routing_page():
     
     # Routing thresholds with info
     st.markdown("### Confidence Thresholds")
-    show_info_expander("confidence_threshold", "ℹ️ How confidence routing works")
+    show_info_expander("confidence_threshold", "Info: How confidence routing works")
     thresholds = get_routing_thresholds()
     
     if thresholds:

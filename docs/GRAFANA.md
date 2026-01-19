@@ -188,9 +188,9 @@ To import:
 
 | Endpoint | Description | Time-Series | Fields |
 |----------|-------------|-------------|--------|
-| `/api/drift/history` | Historical drift metrics | ✅ | `psi_score`, `ks_p_value`, `js_divergence` |
-| `/api/drift/metrics` | Current metrics (single point) | ⚠️ | Current values only |
-| `/api/drift/alerts` | Alert list | ✅ | `created_at` for time, `severity` for grouping |
+| `/api/drift/history` | Historical drift metrics | [OK] | `psi_score`, `ks_p_value`, `js_divergence` |
+| `/api/drift/metrics` | Current metrics (single point) | [Limited] | Current values only |
+| `/api/drift/alerts` | Alert list | [OK] | `created_at` for time, `severity` for grouping |
 
 ## Time Field Format
 

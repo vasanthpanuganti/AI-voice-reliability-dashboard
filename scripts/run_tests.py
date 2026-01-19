@@ -26,9 +26,9 @@ def run_tests():
     result = subprocess.run(cmd, cwd=project_root)
     
     if result.returncode == 0:
-        print("\n✅ All tests passed!")
+        print("\n[PASS] All tests passed!")
     else:
-        print("\n❌ Some tests failed. Check output above.")
+        print("\n[FAIL] Some tests failed. Check output above.")
     
     return result.returncode
 
