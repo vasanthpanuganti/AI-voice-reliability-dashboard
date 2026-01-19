@@ -89,6 +89,64 @@ The demo generates realistic healthcare query data:
 
 This simulates a scenario where billing queries suddenly increased from 20% to 50% - triggering drift alerts.
 
+## Importing Custom Datasets
+
+You can import your own query data from CSV or JSON files using the import script.
+
+### Data Format
+
+**Required fields:**
+- `query`: The text of the query (required)
+- `timestamp`: When the query occurred (required, ISO 8601 format preferred)
+
+**Optional fields:**
+- `query_category`: Category of the query (e.g., appointment, prescription, billing)
+- `confidence_score`: Confidence score of the AI response (0.0 to 1.0)
+- `ai_response`: The AI's response to the query
+- `embedding`: Pre-computed embedding vector (JSON array). If not provided, will be auto-generated.
+
+### CSV Format
+
+See `data/examples/query_log_template.csv` for an example format:
+
+```csv
+query,timestamp,query_category,confidence_score,ai_response
+"I need to schedule an appointment","2024-01-15T10:30:00",appointment,0.85,"I can help you schedule..."
+```
+
+### JSON Format
+
+```json
+[
+  {
+    "query": "I need to schedule an appointment",
+    "timestamp": "2024-01-15T10:30:00",
+    "query_category": "appointment",
+    "confidence_score": "0.85",
+    "ai_response": "I can help you schedule..."
+  }
+]
+```
+
+### Importing Data
+
+```bash
+# Import from CSV
+python scripts/import_custom_data.py --file data/my_queries.csv --format csv
+
+# Import from JSON
+python scripts/import_custom_data.py --file data/my_queries.json --format json
+
+# Clear existing data before importing
+python scripts/import_custom_data.py --file data/my_queries.csv --format csv --clear-existing
+```
+
+The script will:
+- Validate your data format
+- Auto-generate embeddings if not provided
+- Import data in batches with progress indicators
+- Show any errors encountered during import
+
 ## Project Structure
 
 ```

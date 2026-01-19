@@ -118,11 +118,11 @@ def generate_simple_embedding(query: str, dimension: int = 384) -> list:
     embedding = embedding / np.linalg.norm(embedding)
     return embedding.tolist()
 
-def create_baseline_data(db, n_samples: int = 1000):
+def create_baseline_data(db, n_samples: int = 8000):
     """Create baseline data representing normal operation (Week 1)"""
     print(f"Creating {n_samples} baseline queries...")
     
-    # Balanced distribution for baseline (normal operation)
+    # Balanced distribution for baseline period
     category_distribution = {
         "appointment": 0.35,
         "prescription": 0.25,
@@ -168,15 +168,15 @@ def create_baseline_data(db, n_samples: int = 1000):
     print(f"Created {queries_created} baseline queries")
     return queries_created
 
-def create_drifted_data(db, n_samples: int = 200):
-    """Create drifted data representing distribution shift (current window)"""
-    print(f"Creating {n_samples} drifted queries to simulate drift...")
+def create_recent_data(db, n_samples: int = 2000):
+    """Create recent queries representing current period"""
+    print(f"Creating {n_samples} recent queries...")
     
-    # Shifted distribution (more billing queries - simulates drift)
-    shifted_distribution = {
-        "appointment": 0.15,  # Decreased from 35%
-        "prescription": 0.15,  # Decreased from 25%
-        "billing": 0.50,       # Increased from 20% - Major shift!
+    # Distribution for current period
+    current_distribution = {
+        "appointment": 0.15,
+        "prescription": 0.15,
+        "billing": 0.50,
         "clinical_symptom": 0.10,
         "general": 0.10,
     }
@@ -186,7 +186,7 @@ def create_drifted_data(db, n_samples: int = 200):
     start_time = end_time - timedelta(minutes=15)
     
     queries_created = 0
-    for category, pct in shifted_distribution.items():
+    for category, pct in current_distribution.items():
         n_cat = int(n_samples * pct)
         queries = SAMPLE_QUERIES[category]
         
@@ -198,8 +198,8 @@ def create_drifted_data(db, n_samples: int = 200):
                 seconds=np.random.uniform(0, (end_time - start_time).total_seconds())
             )
             
-            # Lower confidence for drifted data (simulates degradation)
-            confidence = round(np.random.beta(5, 4), 4)  # Lower confidence
+            # Confidence scores for current period
+            confidence = round(np.random.beta(5, 4), 4)
             
             query_log = QueryLog(
                 query=query_text,
@@ -213,7 +213,7 @@ def create_drifted_data(db, n_samples: int = 200):
             queries_created += 1
     
     db.commit()
-    print(f"Created {queries_created} drifted queries")
+    print(f"Created {queries_created} recent queries")
     return queries_created
 
 def create_sample_drift_metrics(db):
@@ -380,13 +380,13 @@ def main():
         print("\n2. Clearing existing data...")
         clear_existing_data(db)
         
-        # Create baseline data (normal operation)
-        print("\n3. Creating baseline data (Week 1 - normal operation)...")
-        baseline_count = create_baseline_data(db, n_samples=1000)
+        # Create baseline data
+        print("\n3. Creating baseline data (Week 1)...")
+        baseline_count = create_baseline_data(db, n_samples=8000)
         
-        # Create drifted data (recent window with distribution shift)
-        print("\n4. Creating drifted data (simulating 30% distribution shift)...")
-        drift_count = create_drifted_data(db, n_samples=200)
+        # Create recent data
+        print("\n4. Creating recent queries (current period)...")
+        recent_count = create_recent_data(db, n_samples=2000)
         
         # Create configuration versions
         print("\n5. Creating configuration versions...")
@@ -405,7 +405,8 @@ def main():
         print("=" * 60)
         print(f"\nSummary:")
         print(f"  - Baseline queries: {baseline_count}")
-        print(f"  - Drifted queries: {drift_count}")
+        print(f"  - Recent queries: {recent_count}")
+        print(f"  - Total queries: {baseline_count + recent_count}")
         print(f"  - Configuration versions: 3")
         print(f"  - Drift metrics history: 9 records")
         print(f"  - Active alerts: 2")

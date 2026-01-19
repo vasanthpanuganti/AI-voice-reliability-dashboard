@@ -29,11 +29,12 @@
             margin-bottom: 2rem;
             border-bottom: 1px solid #2a2a2a;
             padding-bottom: 1rem;
+            text-align: center;
         }
         
         h1 {
             color: #ffffff;
-            font-size: 2rem;
+            font-size: 3rem;
             font-weight: 600;
             margin-bottom: 0.5rem;
         }
@@ -41,6 +42,11 @@
         .subtitle {
             color: #B7B7B7;
             font-size: 0.9rem;
+        }
+        
+        .status-container {
+            margin-top: 1rem;
+            text-align: center;
         }
         
         .status-indicator {
@@ -147,7 +153,119 @@
         }
         
         .alerts-section {
-            margin-top: 2rem;
+            margin-top: 3rem;
+            padding-top: 2rem;
+            border-top: 1px solid #2a2a2a;
+        }
+        
+        .alerts-section h2 {
+            color: #ffffff;
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-bottom: 1.5rem;
+        }
+        
+        .alert-expandable {
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        
+        .alert-expandable:hover {
+            background: #2a2a2a;
+        }
+        
+        .alert-details-expanded {
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px solid #2a2a2a;
+        }
+        
+        .alert-detail-row {
+            margin: 8px 0;
+            font-size: 14px;
+        }
+        
+        .alert-detail-label {
+            color: #B7B7B7;
+            font-weight: 500;
+        }
+        
+        .alert-detail-value {
+            color: #e0e0e0;
+            margin-left: 8px;
+        }
+        
+        .info-icon {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            margin-left: 8px;
+            cursor: pointer;
+            color: #B7B7B7;
+            font-size: 12px;
+            border: 1px solid #404040;
+            border-radius: 50%;
+            text-align: center;
+            line-height: 14px;
+            vertical-align: middle;
+        }
+        
+        .info-icon:hover {
+            color: #ffffff;
+            border-color: #73BF69;
+        }
+        
+        .tooltip {
+            position: relative;
+            display: inline-block;
+        }
+        
+        .tooltip-content {
+            visibility: hidden;
+            position: absolute;
+            background: #2a2a2a;
+            color: #e0e0e0;
+            padding: 12px;
+            border: 1px solid #404040;
+            border-radius: 4px;
+            z-index: 1000;
+            width: 300px;
+            font-size: 12px;
+            line-height: 1.6;
+            bottom: 125%;
+            left: 50%;
+            margin-left: -150px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+        }
+        
+        .tooltip:hover .tooltip-content {
+            visibility: visible;
+        }
+        
+        .tooltip-content code {
+            background: #1a1a1a;
+            padding: 2px 4px;
+            border-radius: 2px;
+            font-family: 'Courier New', monospace;
+        }
+        
+        footer {
+            margin-top: 4rem;
+            padding-top: 2rem;
+            border-top: 1px solid #2a2a2a;
+            text-align: center;
+            color: #B7B7B7;
+            font-size: 14px;
+        }
+        
+        footer a {
+            color: #73BF69;
+            text-decoration: none;
+            margin: 0 8px;
+        }
+        
+        footer a:hover {
+            text-decoration: underline;
         }
         
         .alert-panel {
@@ -247,7 +365,7 @@
         <header>
             <h1>AI Pipeline Resilience Dashboard</h1>
             <p class="subtitle">Drift Detection and Rollback System for Healthcare AI Pipelines</p>
-            <div style="margin-top: 1rem;">
+            <div class="status-container">
                 <span class="status-indicator" id="apiStatus"></span>
                 <span id="apiStatusText">Checking API...</span>
             </div>
@@ -273,6 +391,12 @@
         </div>
         
         <button class="refresh-btn" onclick="loadData()">Refresh Data</button>
+        
+        <footer>
+            <a href="https://github.com/vasanthpanuganti/AI-voice-reliability-dashboard" target="_blank" rel="noopener noreferrer">GitHub</a>
+            <span>•</span>
+            <span>Built by curiosity</span>
+        </footer>
     </div>
     
     <script>
@@ -342,7 +466,7 @@
             return value.toFixed(2);
         }
         
-        function createMetricCard(label, value, severity, subtitle = '', progress = 0) {
+        function createMetricCard(label, value, severity, subtitle = '', progress = 0, metricType = '') {
             const severityClass = getSeverityClass(severity);
             const colorMap = {
                 normal: '#73BF69',
@@ -360,9 +484,47 @@
             const color = colorMap[severity?.toLowerCase() || 'normal'] || '#73BF69';
             const status = statusMap[severity?.toLowerCase() || 'normal'] || 'All Good';
             
+            // Formula tooltips
+            const formulas = {
+                'psi_score': {
+                    title: 'Population Stability Index (PSI)',
+                    formula: 'PSI = Σ((Actual_i - Expected_i) × ln(Actual_i / Expected_i))',
+                    description: 'Measures how much a distribution has shifted over time. Higher values indicate greater distribution change.'
+                },
+                'ks_p_value': {
+                    title: 'Kolmogorov-Smirnov Test',
+                    formula: 'D = max|F_n(x) - F_0(x)|',
+                    description: 'Tests if two samples come from the same distribution. Lower p-values indicate distributions are more different.'
+                },
+                'js_divergence': {
+                    title: 'Jensen-Shannon Divergence',
+                    formula: 'JS(P||Q) = 0.5 × KL(P||M) + 0.5 × KL(Q||M) where M = 0.5(P+Q)',
+                    description: 'Symmetric measure of similarity between probability distributions. Returns value between 0 (identical) and 1 (completely different).'
+                },
+                'wasserstein': {
+                    title: 'Wasserstein Distance',
+                    formula: 'W_p(P,Q) = (inf E[|X-Y|^p])^(1/p)',
+                    description: 'Measures the minimum cost to transform one distribution into another. More sensitive to subtle semantic shifts.'
+                }
+            };
+            
+            const formulaInfo = formulas[metricType] || null;
+            const infoButton = formulaInfo ? `
+                <span class="tooltip">
+                    <span class="info-icon">i</span>
+                    <span class="tooltip-content">
+                        <strong>${formulaInfo.title}</strong><br><br>
+                        <strong>Formula:</strong><br>
+                        <code>${formulaInfo.formula}</code><br><br>
+                        <strong>Interpretation:</strong><br>
+                        ${formulaInfo.description}
+                    </span>
+                </span>
+            ` : '';
+            
             return `
                 <div class="metric-card ${severityClass}">
-                    <div class="metric-label">${label}</div>
+                    <div class="metric-label">${label}${infoButton}</div>
                     <div class="metric-value">${value}</div>
                     <div class="metric-status">${status}</div>
                     ${subtitle ? `<div class="metric-status">${subtitle}</div>` : ''}
@@ -397,7 +559,8 @@
                     formatMetricValue(metrics.psi_score, 'psi_score'),
                     severity,
                     `Sample size: ${metrics.sample_size || 0}`,
-                    (metrics.psi_score / 0.4) * 100
+                    (metrics.psi_score / 0.4) * 100,
+                    'psi_score'
                 ));
             }
             
@@ -409,7 +572,9 @@
                     'Kolmogorov-Smirnov Test',
                     formatMetricValue(metrics.ks_p_value, 'ks_p_value'),
                     severity,
-                    `Statistic: ${formatMetricValue(metrics.ks_statistic, 'ks_statistic')}`
+                    `Statistic: ${formatMetricValue(metrics.ks_statistic, 'ks_statistic')}`,
+                    0,
+                    'ks_p_value'
                 ));
             }
             
@@ -422,7 +587,8 @@
                     formatMetricValue(metrics.js_divergence, 'js_divergence'),
                     severity,
                     '',
-                    (metrics.js_divergence / 0.3) * 100
+                    (metrics.js_divergence / 0.3) * 100,
+                    'js_divergence'
                 ));
             }
             
@@ -445,20 +611,110 @@
                 return;
             }
             
-            const alertsHtml = alerts.map(alert => {
+            // Fetch detailed diagnostics for each alert
+            const alertsWithDetails = await Promise.all(
+                alerts.map(async (alert) => {
+                    const diagnostics = await fetchAPI(`/api/drift/alerts/${alert.id}/diagnostics`);
+                    return { alert, diagnostics };
+                })
+            );
+            
+            const alertsHtml = alertsWithDetails.map(({ alert, diagnostics }, index) => {
                 const severityClass = getSeverityClass(alert.severity);
+                const overThreshold = alert.metric_value > alert.threshold_value ? 
+                    ((alert.metric_value - alert.threshold_value) / alert.threshold_value * 100).toFixed(1) : 
+                    ((alert.threshold_value - alert.metric_value) / alert.threshold_value * 100).toFixed(1);
+                
+                let detailsHtml = '';
+                if (diagnostics && diagnostics.diagnostics) {
+                    const diag = diagnostics.diagnostics;
+                    detailsHtml = `
+                        <div class="alert-details-expanded">
+                            <div class="alert-detail-row">
+                                <span class="alert-detail-label">What this means:</span>
+                                <span class="alert-detail-value">${diag.what_it_means || diag.interpretation || 'N/A'}</span>
+                            </div>
+                            ${diag.baseline_period ? `
+                                <div class="alert-detail-row">
+                                    <span class="alert-detail-label">Baseline period:</span>
+                                    <span class="alert-detail-value">${diag.baseline_period}</span>
+                                </div>
+                            ` : ''}
+                            ${diag.current_period ? `
+                                <div class="alert-detail-row">
+                                    <span class="alert-detail-label">Current period:</span>
+                                    <span class="alert-detail-value">${diag.current_period}</span>
+                                </div>
+                            ` : ''}
+                            ${diag.baseline_sample_size ? `
+                                <div class="alert-detail-row">
+                                    <span class="alert-detail-label">Baseline sample size:</span>
+                                    <span class="alert-detail-value">${diag.baseline_sample_size}</span>
+                                </div>
+                            ` : ''}
+                            ${diag.current_sample_size ? `
+                                <div class="alert-detail-row">
+                                    <span class="alert-detail-label">Current sample size:</span>
+                                    <span class="alert-detail-value">${diag.current_sample_size}</span>
+                                </div>
+                            ` : ''}
+                            ${diag.category_shifts && diag.category_shifts.length > 0 ? `
+                                <div class="alert-detail-row">
+                                    <span class="alert-detail-label">Category shifts:</span>
+                                    <span class="alert-detail-value">
+                                        ${diag.category_shifts.map(cs => 
+                                            `${cs.category}: ${cs.baseline_percentage}% → ${cs.current_percentage}% (${cs.shift > 0 ? '+' : ''}${cs.shift}%)`
+                                        ).join(', ')}
+                                    </span>
+                                </div>
+                            ` : ''}
+                            ${diag.severity_interpretation ? `
+                                <div class="alert-detail-row">
+                                    <span class="alert-detail-label">Severity interpretation:</span>
+                                    <span class="alert-detail-value">${diag.severity_interpretation}</span>
+                                </div>
+                            ` : ''}
+                            ${diag.recommendations && diag.recommendations.length > 0 ? `
+                                <div class="alert-detail-row">
+                                    <span class="alert-detail-label">Recommendations:</span>
+                                    <span class="alert-detail-value">
+                                        <ul style="margin: 8px 0; padding-left: 20px;">
+                                            ${diag.recommendations.map(rec => `<li>${rec}</li>`).join('')}
+                                        </ul>
+                                    </span>
+                                </div>
+                            ` : ''}
+                        </div>
+                    `;
+                }
+                
                 return `
                     <div class="alert-panel alert-${severityClass}">
                         <div class="alert-title">${alert.metric_name} - ${alert.severity.toUpperCase()}</div>
                         <div class="alert-details">
-                            Value: ${alert.metric_value.toFixed(3)} | Threshold: ${alert.threshold_value.toFixed(3)} | 
-                            Created: ${new Date(alert.created_at).toLocaleString()}
+                            <div class="alert-detail-row">
+                                <span class="alert-detail-label">Current value:</span>
+                                <span class="alert-detail-value">${alert.metric_value.toFixed(3)}</span>
+                            </div>
+                            <div class="alert-detail-row">
+                                <span class="alert-detail-label">Threshold:</span>
+                                <span class="alert-detail-value">${alert.threshold_value.toFixed(3)}</span>
+                            </div>
+                            <div class="alert-detail-row">
+                                <span class="alert-detail-label">Difference:</span>
+                                <span class="alert-detail-value">${overThreshold}% ${alert.metric_value > alert.threshold_value ? 'above' : 'below'} threshold</span>
+                            </div>
+                            <div class="alert-detail-row">
+                                <span class="alert-detail-label">Created:</span>
+                                <span class="alert-detail-value">${new Date(alert.created_at).toLocaleString()}</span>
+                            </div>
+                            ${detailsHtml}
                         </div>
                     </div>
                 `;
             }).join('');
             
-            container.innerHTML = `<h2 style="margin-bottom: 1rem;">Active Alerts</h2>${alertsHtml}`;
+            container.innerHTML = `<h2>Active Alerts</h2>${alertsHtml}`;
         }
         
         async function loadRollbackInfo() {
