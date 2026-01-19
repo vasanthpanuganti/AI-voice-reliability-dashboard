@@ -11,6 +11,19 @@ import plotly.express as px
 # Configuration - Use environment variable for API URL in production
 API_BASE_URL = os.getenv("API_URL", "http://localhost:8000")
 
+
+def safe_parse_datetime(dt_string):
+    """Safely parse datetime string from API with fallback."""
+    if not dt_string:
+        return datetime.now()
+    try:
+        return datetime.fromisoformat(dt_string.replace("Z", "+00:00"))
+    except (ValueError, AttributeError):
+        try:
+            return datetime.strptime(dt_string[:19], "%Y-%m-%dT%H:%M:%S")
+        except (ValueError, TypeError):
+            return datetime.now()
+
 st.set_page_config(
     page_title="AI Pipeline Resilience Dashboard",
     page_icon="🔍",
@@ -18,10 +31,10 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-def apply_grafana_theme():
-    """Apply minimalistic sharp design with clean grays"""
-    st.markdown("""
-    <style>
+@st.cache_resource
+def _get_grafana_theme_css():
+    """Return cached CSS string to avoid recomputation."""
+    return """<style>
     /* Minimalistic dark theme - flat colors */
     .stApp {
         background: #1a1a1a;
@@ -146,11 +159,39 @@ def apply_grafana_theme():
         border-radius: 6px;
     }
     
-    /* Code blocks - sharp design */
+    /* Code blocks - sharp design with dark theme for readability */
     [data-testid="stCodeBlock"] {
-        background-color: #1a1a1a;
-        border: 1px solid #2a2a2a;
+        background-color: #2a2a2a !important;
+        border: 1px solid #404040 !important;
         border-radius: 0px;
+    }
+    
+    [data-testid="stCodeBlock"] pre {
+        background-color: #2a2a2a !important;
+        color: #e0e0e0 !important;
+    }
+    
+    [data-testid="stCodeBlock"] code {
+        background-color: #2a2a2a !important;
+        color: #e0e0e0 !important;
+    }
+    
+    /* Ensure all code elements have readable text */
+    code {
+        background-color: #2a2a2a !important;
+        color: #e0e0e0 !important;
+        padding: 2px 6px;
+        border-radius: 2px;
+    }
+    
+    pre {
+        background-color: #2a2a2a !important;
+        color: #e0e0e0 !important;
+    }
+    
+    pre code {
+        background-color: transparent !important;
+        color: #e0e0e0 !important;
     }
     
     /* Chart container */
@@ -182,8 +223,192 @@ def apply_grafana_theme():
         border: 1px solid #2a2a2a;
         border-radius: 0px;
     }
-    </style>
-    """, unsafe_allow_html=True)
+    
+    /* Info tooltip styles */
+    .info-tooltip-container:hover .info-tooltip-content {
+        visibility: visible !important;
+    }
+    
+    .info-btn {
+        transition: background 0.2s;
+    }
+    
+    .info-btn:hover {
+        background: #5a9cf0 !important;
+    }
+    
+    .info-tooltip-content::after {
+        content: "";
+        position: absolute;
+        top: 100%;
+        left: 50%;
+        margin-left: -6px;
+        border-width: 6px;
+        border-style: solid;
+        border-color: #2d2d2d transparent transparent transparent;
+    }
+    </style>"""
+
+
+def apply_grafana_theme():
+    """Apply minimalistic sharp design with clean grays."""
+    st.markdown(_get_grafana_theme_css(), unsafe_allow_html=True)
+
+
+# ============================================================================
+# INFO TOOLTIP DEFINITIONS
+# ============================================================================
+INFO_TOOLTIPS = {
+    # Drift Metrics
+    "psi_score": {
+        "title": "Population Stability Index (PSI)",
+        "description": "Measures how much the distribution of patient queries has changed compared to the baseline period.",
+        "interpretation": "• < 0.10: No significant change\n• 0.10-0.25: Moderate change (Warning)\n• > 0.25: Significant change (Critical)",
+        "action": "High PSI indicates patients are asking different types of questions than expected. Review query categories for shifts."
+    },
+    "ks_p_value": {
+        "title": "Kolmogorov-Smirnov Test (p-value)",
+        "description": "Statistical test measuring if AI confidence scores have changed significantly from baseline.",
+        "interpretation": "• > 0.05: Normal (no significant change)\n• 0.01-0.05: Warning\n• < 0.01: Critical (significant change)",
+        "action": "Low p-value suggests AI confidence is behaving differently. May indicate model degradation or data quality issues."
+    },
+    "js_divergence": {
+        "title": "Jensen-Shannon Divergence",
+        "description": "Measures how much the AI's internal understanding (embeddings) has shifted from baseline.",
+        "interpretation": "• < 0.10: Normal\n• 0.10-0.20: Warning\n• > 0.20: Critical",
+        "action": "High JS divergence indicates the AI is 'thinking' about queries differently. May require model retraining or embedding updates."
+    },
+    "sample_size": {
+        "title": "Sample Size",
+        "description": "Number of patient queries analyzed in the current monitoring window (typically 15 minutes).",
+        "interpretation": "More samples = more reliable drift metrics. Minimum 100 samples recommended for accurate detection.",
+        "action": "If sample size is low, metrics may be unreliable. Wait for more data to accumulate."
+    },
+    # Confidence Routing
+    "confidence_threshold": {
+        "title": "Confidence Thresholds",
+        "description": "Determines how AI responses are routed based on model confidence scores.",
+        "interpretation": "• High (≥0.85): AI responds directly\n• Medium (0.70-0.85): May need validation\n• Low (0.50-0.70): Likely needs human\n• Reject (<0.30): Always escalate",
+        "action": "Adjust thresholds based on acceptable error rates. Lower thresholds = more AI responses, higher risk."
+    },
+    "risk_penalty": {
+        "title": "Risk Level Penalties",
+        "description": "Confidence score is reduced for sensitive topics to ensure safer routing.",
+        "interpretation": "• Low Risk: No penalty\n• Medium Risk: -10% confidence\n• High Risk: -20% confidence\n• Critical Risk: -35% confidence",
+        "action": "Penalties ensure high-risk queries (medications, symptoms) require higher confidence to pass."
+    },
+    "topic_classification": {
+        "title": "Topic Classification",
+        "description": "Automatically detects sensitive topics in patient queries using pattern matching.",
+        "interpretation": "Topics include: Medication, Clinical Symptoms, Billing Disputes, Personal Health Info",
+        "action": "Critical topics (symptoms) always route to humans regardless of confidence."
+    },
+    # Rollback
+    "known_good_version": {
+        "title": "Known-Good Version",
+        "description": "A configuration version that has been verified to work well based on performance metrics.",
+        "interpretation": "Known-good versions are preferred targets for automated rollbacks.",
+        "action": "Mark stable versions as 'known-good' after confirming good performance metrics."
+    },
+    "rollback_trigger": {
+        "title": "Automated Rollback Triggers",
+        "description": "System automatically rolls back when critical conditions are met.",
+        "interpretation": "• Emergency Alert: Immediate rollback\n• Sustained Critical: 3+ critical alerts in 15 min\n• Confidence Collapse: 25% drop from baseline",
+        "action": "Cooldown period (30 min) prevents repeated rollbacks. System restores best known-good version."
+    },
+    # Segment Analysis
+    "segment_drift": {
+        "title": "Segment-Level Drift",
+        "description": "Monitors drift for specific patient populations or query categories separately.",
+        "interpretation": "Catches issues affecting specific groups even when aggregate metrics look fine.",
+        "action": "If one segment shows drift while others are normal, investigate that specific category."
+    },
+    "distribution_shift": {
+        "title": "Distribution Shift",
+        "description": "How much this category's share of queries has changed from baseline.",
+        "interpretation": "• < 5%: Normal variation\n• 5-10%: Notable shift\n• > 10%: Significant shift",
+        "action": "Large shifts indicate changing patient behavior or possible data collection issues."
+    },
+}
+
+
+def create_info_button(key: str, inline: bool = True) -> str:
+    """Create an info button with tooltip explanation."""
+    info = INFO_TOOLTIPS.get(key, {})
+    if not info:
+        return ""
+    
+    title = info.get("title", key)
+    description = info.get("description", "")
+    interpretation = info.get("interpretation", "").replace("\n", "<br>")
+    action = info.get("action", "")
+    
+    tooltip_content = f"""
+        <strong style='color: #3274D9;'>{title}</strong><br><br>
+        <strong>What it measures:</strong><br>{description}<br><br>
+        <strong>How to read it:</strong><br>{interpretation}<br><br>
+        <strong>What to do:</strong><br>{action}
+    """
+    
+    if inline:
+        return f"""
+        <span class="info-tooltip-container" style="position: relative; display: inline-block; margin-left: 6px;">
+            <span class="info-btn" style="
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                width: 16px;
+                height: 16px;
+                border-radius: 50%;
+                background: #3274D9;
+                color: white;
+                font-size: 10px;
+                font-weight: bold;
+                cursor: help;
+                font-style: normal;
+            ">i</span>
+            <span class="info-tooltip-content" style="
+                visibility: hidden;
+                position: absolute;
+                z-index: 1000;
+                bottom: 125%;
+                left: 50%;
+                transform: translateX(-50%);
+                width: 300px;
+                background: #2d2d2d;
+                color: #e0e0e0;
+                padding: 15px;
+                border-radius: 6px;
+                border: 1px solid #404040;
+                font-size: 12px;
+                line-height: 1.5;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+                text-align: left;
+            ">{tooltip_content}</span>
+        </span>
+        """
+    else:
+        return tooltip_content
+
+
+def show_info_expander(key: str, label: str = "ℹ️ What does this mean?"):
+    """Show info in a Streamlit expander."""
+    info = INFO_TOOLTIPS.get(key, {})
+    if not info:
+        return
+    
+    with st.expander(label, expanded=False):
+        st.markdown(f"**{info.get('title', key)}**")
+        st.markdown(info.get('description', ''))
+        st.markdown("**How to read it:**")
+        # Use markdown with dark background styling instead of st.code for better readability
+        interpretation = info.get('interpretation', '')
+        st.markdown(
+            f'<div style="background-color: #2a2a2a; border: 1px solid #404040; padding: 15px; margin: 10px 0; color: #e0e0e0; font-family: monospace; white-space: pre-line; line-height: 1.6;">{interpretation}</div>',
+            unsafe_allow_html=True
+        )
+        st.markdown(f"**What to do:** {info.get('action', '')}")
+
 
 def make_api_request(endpoint: str, method: str = "GET", json_data: dict = None, timeout: int = 10):
     """Make API request with error handling and timeout"""
@@ -207,6 +432,19 @@ def make_api_request(endpoint: str, method: str = "GET", json_data: dict = None,
     except requests.exceptions.RequestException as e:
         st.error(f"API Error: {str(e)}")
         return None
+
+
+def make_api_request_with_retry(endpoint: str, method: str = "GET", json_data: dict = None,
+                                 timeout: int = 10, max_retries: int = 2):
+    """Make API request with automatic retry on transient failures."""
+    for attempt in range(max_retries):
+        result = make_api_request(endpoint, method, json_data, timeout)
+        if result is not None:
+            return result
+        if attempt < max_retries - 1:
+            time.sleep(1)
+    return None
+
 
 @st.cache_data(ttl=30)
 def get_drift_metrics():
@@ -242,6 +480,48 @@ def get_rollback_history(limit: int = 50):
 def get_current_config():
     """Get current configuration"""
     return make_api_request("/api/rollback/current-config")
+
+@st.cache_data(ttl=30)
+def get_segment_drift(segment_by: str = "query_category"):
+    """Get segment-level drift metrics"""
+    return make_api_request(f"/api/drift/segments?segment_by={segment_by}")
+
+@st.cache_data(ttl=30)
+def get_drift_summary():
+    """Get comprehensive drift summary"""
+    return make_api_request("/api/drift/summary")
+
+@st.cache_data(ttl=30)
+def get_trigger_status():
+    """Get automated rollback trigger status"""
+    return make_api_request("/api/rollback/triggers/status")
+
+@st.cache_data(ttl=30)
+def get_routing_stats(hours: int = 24):
+    """Get confidence routing statistics"""
+    return make_api_request(f"/api/routing/stats?hours={hours}")
+
+@st.cache_data(ttl=60)
+def get_routing_thresholds():
+    """Get confidence routing thresholds"""
+    return make_api_request("/api/routing/thresholds")
+
+@st.cache_data(ttl=60)
+def get_sensitive_topics():
+    """Get sensitive topic configuration"""
+    return make_api_request("/api/routing/topics")
+
+def evaluate_query_routing(query: str, ai_response: str, confidence: float):
+    """Evaluate a query for routing decision"""
+    return make_api_request(
+        "/api/routing/evaluate",
+        method="POST",
+        json_data={
+            "query": query,
+            "ai_response": ai_response,
+            "confidence_score": confidence
+        }
+    )
 
 def execute_rollback(version_id: int, reason: str):
     """Execute rollback"""
@@ -390,17 +670,23 @@ def main():
     
     page = st.sidebar.radio(
         "Select Page",
-        ["Drift Detection", "Rollback Control", "System Overview"],
+        ["Drift Detection", "Segment Analysis", "Confidence Routing", "Rollback Control", "System Overview"],
         label_visibility="collapsed"
     )
     
     st.sidebar.markdown("---")
-    st.sidebar.markdown("### Settings")
-    
-    auto_refresh = st.sidebar.checkbox("Auto-refresh (30s)", value=False)
-    refresh_interval = st.sidebar.slider("Refresh Interval (seconds)", 10, 60, 30)
-    
+    st.sidebar.markdown("### Refresh Controls")
+
+    col_refresh1, col_refresh2 = st.sidebar.columns(2)
+    with col_refresh1:
+        if st.button("Refresh Now", use_container_width=True):
+            st.cache_data.clear()
+            st.rerun()
+    with col_refresh2:
+        auto_refresh = st.checkbox("Auto", value=False, help="Enable auto-refresh")
+
     if auto_refresh:
+        refresh_interval = st.sidebar.slider("Interval (seconds)", 10, 60, 30)
         time.sleep(refresh_interval)
         st.rerun()
     
@@ -408,8 +694,46 @@ def main():
     st.sidebar.markdown("### System Info")
     st.sidebar.markdown(f"**API:** `{API_BASE_URL}`")
     
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### Quick Help")
+    with st.sidebar.expander("📊 Metric Thresholds"):
+        st.markdown("""
+        **PSI (Input Drift)**
+        - Normal: < 0.10
+        - Warning: 0.10 - 0.25
+        - Critical: > 0.25
+        
+        **KS p-value (Output Quality)**
+        - Normal: > 0.05
+        - Warning: 0.01 - 0.05  
+        - Critical: < 0.01
+        
+        **JS Divergence (Understanding)**
+        - Normal: < 0.10
+        - Warning: 0.10 - 0.20
+        - Critical: > 0.20
+        """)
+    
+    with st.sidebar.expander("🔄 Routing Rules"):
+        st.markdown("""
+        **Confidence Thresholds**
+        - ≥0.85: AI responds directly
+        - 0.70-0.85: May need validation
+        - 0.50-0.70: Likely needs human
+        - <0.30: Always escalate
+        
+        **Risk Penalties**
+        - Critical topics: -35%
+        - High risk: -20%
+        - Medium risk: -10%
+        """)
+    
     if page == "Drift Detection":
         show_drift_detection_page()
+    elif page == "Segment Analysis":
+        show_segment_analysis_page()
+    elif page == "Confidence Routing":
+        show_confidence_routing_page()
     elif page == "Rollback Control":
         show_rollback_page()
     elif page == "System Overview":
@@ -433,65 +757,91 @@ def show_drift_detection_page():
         st.info("**Troubleshooting:**\n- Check if API is running: `python run_api.py`\n- Verify API health: http://localhost:8000/health\n- Check API logs for errors")
         return
     
-    # Enhanced Metric Cards
+    # Enhanced Metric Cards with info buttons
     st.markdown("### Key Metrics")
+    show_info_expander("psi_score", "ℹ️ Understanding Drift Metrics")
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
         psi_score = metrics.get("psi_score", 0)
         severity = get_psi_severity(psi_score)
         st.markdown(create_metric_card(
-            label="Input Shift Detection",
+            label=f"Input Shift (PSI)",
             value=f"{psi_score:.4f}" if psi_score > 0 else "0.00",
             severity=severity,
             subtitle="How much patient questions have changed",
             icon="",
-            progress=min(psi_score, 0.4),  # Scale for display (0-0.4 range)
+            progress=min(psi_score, 0.4),
             max_value=0.4,
-            tooltip="Measures how different current patient questions are compared to the baseline. Lower is better."
+            tooltip="PSI measures query distribution shift. <0.10 normal, 0.10-0.25 warning, >0.25 critical"
         ), unsafe_allow_html=True)
-    
+
     with col2:
         ks_p_value = metrics.get("ks_p_value", 1.0)
         severity = get_ks_severity(ks_p_value)
-        # For KS, lower p-value means more drift, so invert for progress bar
         progress_value = 1.0 - min(ks_p_value, 1.0)
         st.markdown(create_metric_card(
-            label="Output Quality Check",
+            label=f"Output Quality (KS)",
             value=f"{ks_p_value:.4f}",
             severity=severity,
             subtitle="How reliable AI responses are",
             icon="",
             progress=progress_value,
             max_value=1.0,
-            tooltip="Measures how consistent AI responses are. Values closer to 1.0 mean responses are consistent and reliable."
+            tooltip="KS p-value tests confidence consistency. >0.05 normal, 0.01-0.05 warning, <0.01 critical"
         ), unsafe_allow_html=True)
-    
+
     with col3:
         js_divergence = metrics.get("js_divergence", 0)
         severity = get_js_severity(js_divergence)
         st.markdown(create_metric_card(
-            label="Understanding Accuracy",
+            label=f"Understanding (JS)",
             value=f"{js_divergence:.4f}" if js_divergence > 0 else "0.00",
             severity=severity,
             subtitle="How well AI understands queries",
             icon="",
-            progress=min(js_divergence, 0.3),  # Scale for display (0-0.3 range)
+            progress=min(js_divergence, 0.3),
             max_value=0.3,
-            tooltip="Measures how well the AI system understands patient questions compared to baseline. Lower values mean better understanding."
+            tooltip="JS divergence measures embedding shift. <0.10 normal, 0.10-0.20 warning, >0.20 critical"
         ), unsafe_allow_html=True)
-    
+
     with col4:
-        sample_size = metrics.get("sample_size", 0)
+        sample_size = metrics.get("sample_size") or 0
+        
+        # Automatically refresh queries if active queries is zero
+        if sample_size == 0:
+            # Use session state to prevent multiple simultaneous refresh attempts
+            if "query_refresh_attempted" not in st.session_state:
+                st.session_state.query_refresh_attempted = True
+                try:
+                    # Automatically refresh queries
+                    refresh_response = make_api_request("/api/drift/refresh-queries", method="POST", timeout=30)
+                    if refresh_response:
+                        st.info(f"🔄 Automatically refreshed queries: {refresh_response.get('message', 'Success')}")
+                        # Clear cache and rerun to show updated metrics
+                        st.cache_data.clear()
+                        time.sleep(1)
+                        st.rerun()
+                except Exception as e:
+                    st.warning(f"⚠️ Could not automatically refresh queries: {str(e)}")
+            else:
+                # Reset after a delay (handled by rerun)
+                if "query_refresh_delay" not in st.session_state:
+                    st.session_state.query_refresh_delay = time.time()
+                elif time.time() - st.session_state.query_refresh_delay > 5:
+                    # Reset after 5 seconds
+                    del st.session_state.query_refresh_attempted
+                    del st.session_state.query_refresh_delay
+        
         st.markdown(create_metric_card(
             label="Active Queries",
             value=f"{sample_size:,}" if sample_size > 0 else "0",
-            severity="normal",
+            severity="normal" if sample_size > 0 else "warning",
             subtitle="Patient queries analyzed recently",
             icon="",
-            progress=min(sample_size / 100, 1.0) if sample_size > 0 else 0,  # Scale to 100 queries = 100%
+            progress=min(sample_size / 100, 1.0) if sample_size > 0 else 0,
             max_value=1.0,
-            tooltip="Number of patient queries processed in the current monitoring window."
+            tooltip="Number of queries in current 15-min window. More samples = more reliable metrics."
         ), unsafe_allow_html=True)
     
     st.markdown("<br>", unsafe_allow_html=True)
@@ -524,7 +874,7 @@ def show_drift_detection_page():
                     st.markdown(f"**Type:** {alert['metric_type']}")
                 
                 with col2:
-                    created_at = datetime.fromisoformat(alert["created_at"].replace("Z", "+00:00"))
+                    created_at = safe_parse_datetime(alert.get("created_at"))
                     st.markdown(f"**Created:** {created_at.strftime('%Y-%m-%d %H:%M:%S')}")
                     st.markdown(f'<span style="color:{color};font-weight:bold;font-size:18px;">{severity.upper()}</span>', unsafe_allow_html=True)
                 
@@ -642,6 +992,223 @@ def show_drift_detection_page():
     fig2.update_layout(**create_dark_chart_layout("Jensen-Shannon Divergence Over Time", "JS Divergence", 450))
     st.plotly_chart(fig2, use_container_width=True)
 
+def show_segment_analysis_page():
+    """Segment-Level Drift Analysis"""
+    st.markdown("""
+    <div style="margin-bottom: 30px;">
+        <h2 style="color: #FFFFFF; margin-bottom: 5px;">Segment Analysis</h2>
+        <p style="color: #B7B7B7; margin: 0;">Monitor drift at segment level to catch issues affecting specific patient populations</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    show_info_expander("segment_drift", "ℹ️ Why segment-level monitoring matters")
+    
+    # Segment selection
+    segment_by = st.selectbox(
+        "Segment By",
+        ["query_category", "department", "patient_population"],
+        format_func=lambda x: x.replace("_", " ").title(),
+        help="Choose how to group queries for segment-level drift analysis"
+    )
+    
+    with st.spinner("Analyzing segments..."):
+        segment_data = get_segment_drift(segment_by)
+    
+    if not segment_data:
+        st.warning("Unable to fetch segment drift data. Make sure the API is running.")
+        return
+    
+    # Overall health
+    overall_health = segment_data.get("overall_health", "unknown")
+    health_colors = {"healthy": "#73BF69", "degraded": "#F79420", "critical": "#E24D42"}
+    health_color = health_colors.get(overall_health, "#808080")
+    
+    st.markdown(f"""
+    <div style="background: #2d2d2d; border-left: 4px solid {health_color}; padding: 20px; margin: 20px 0;">
+        <h3 style="color: #FFFFFF; margin: 0;">Overall Segment Health: 
+            <span style="color: {health_color};">{overall_health.upper()}</span>
+        </h3>
+        <p style="color: #B7B7B7; margin-top: 10px;">
+            Total Segments: {segment_data.get('total_segments', 0)} | 
+            Healthy: {segment_data.get('healthy_segments', 0)} | 
+            Degraded: {segment_data.get('degraded_segments', 0)} | 
+            Critical: {segment_data.get('critical_segments', 0)}
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Segment details
+    st.markdown("### Segment Details")
+    
+    segments = segment_data.get("segments", {})
+    
+    if segments:
+        for segment_name, segment_info in segments.items():
+            status = segment_info.get("status", "unknown")
+            status_color = health_colors.get(status, "#808080")
+            
+            with st.expander(f"{segment_name.upper()} - {status.upper()}", expanded=status != "healthy"):
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    st.metric("Baseline Count", segment_info.get("baseline_count", 0))
+                    st.metric("Current Count", segment_info.get("window_count", 0))
+                
+                with col2:
+                    baseline_pct = segment_info.get("baseline_percentage", 0)
+                    current_pct = segment_info.get("window_percentage", 0)
+                    st.metric("Baseline %", f"{baseline_pct:.1f}%")
+                    st.metric("Current %", f"{current_pct:.1f}%")
+                
+                with col3:
+                    shift = segment_info.get("distribution_shift", 0)
+                    shift_color = "#73BF69" if abs(shift) < 5 else "#F79420" if abs(shift) < 10 else "#E24D42"
+                    st.markdown(f"""
+                    <div style="padding: 20px; text-align: center;">
+                        <div style="font-size: 12px; color: #B7B7B7;">Distribution Shift</div>
+                        <div style="font-size: 32px; font-weight: bold; color: {shift_color};">
+                            {'+' if shift > 0 else ''}{shift:.1f}%
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                # Input drift details
+                input_drift = segment_info.get("input_drift", {})
+                if input_drift:
+                    st.markdown("**Input Drift:**")
+                    st.write(f"PSI Score: {input_drift.get('psi_score', 0):.4f}")
+                    if input_drift.get("drift_detected"):
+                        st.warning(f"Drift Detected! Severity: {input_drift.get('severity', 'unknown')}")
+    else:
+        st.info("No segment data available. Ensure you have query data with category information.")
+    
+    # Time window info
+    window = segment_data.get("window", {})
+    baseline = segment_data.get("baseline", {})
+    if window and baseline:
+        st.markdown("---")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown(f"**Baseline Period:** {baseline.get('start', 'N/A')[:19]} to {baseline.get('end', 'N/A')[:19]}")
+        with col2:
+            st.markdown(f"**Current Window:** {window.get('start', 'N/A')[:19]} to {window.get('end', 'N/A')[:19]}")
+
+
+def show_confidence_routing_page():
+    """Confidence-Based Routing Dashboard"""
+    st.markdown("""
+    <div style="margin-bottom: 30px;">
+        <h2 style="color: #FFFFFF; margin-bottom: 5px;">Confidence-Based Routing</h2>
+        <p style="color: #B7B7B7; margin: 0;">Safety layer that evaluates AI responses before delivery to patients</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Routing thresholds with info
+    st.markdown("### Confidence Thresholds")
+    show_info_expander("confidence_threshold", "ℹ️ How confidence routing works")
+    thresholds = get_routing_thresholds()
+    
+    if thresholds:
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("""
+            <div style="background: #2d2d2d; padding: 20px; border-radius: 4px;">
+                <h4 style="color: #FFFFFF;">Confidence Levels</h4>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            thresh = thresholds.get("thresholds", {})
+            for level, value in thresh.items():
+                level_display = level.replace("_", " ").title()
+                color = "#73BF69" if "high" in level else "#F79420" if "medium" in level else "#E24D42"
+                st.markdown(f"""
+                <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #404040;">
+                    <span style="color: #B7B7B7;">{level_display}</span>
+                    <span style="color: {color}; font-weight: bold;">{value:.2f}</span>
+                </div>
+                """, unsafe_allow_html=True)
+        
+        with col2:
+            st.markdown("""
+            <div style="background: #2d2d2d; padding: 20px; border-radius: 4px;">
+                <h4 style="color: #FFFFFF;">Risk Level Penalties</h4>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            penalties = thresholds.get("topic_penalties", {})
+            for level, penalty in penalties.items():
+                st.markdown(f"""
+                <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #404040;">
+                    <span style="color: #B7B7B7;">{level.title()} Risk</span>
+                    <span style="color: #F79420;">-{penalty:.0%}</span>
+                </div>
+                """, unsafe_allow_html=True)
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    # Sensitive Topics
+    st.markdown("### Sensitive Topic Categories")
+    topics = get_sensitive_topics()
+    
+    if topics:
+        cols = st.columns(len(topics))
+        risk_colors = {"low": "#73BF69", "medium": "#F79420", "high": "#E24D42", "critical": "#8B0000"}
+        
+        for i, (topic, config) in enumerate(topics.items()):
+            risk_level = config.get("risk_level", "unknown")
+            color = risk_colors.get(risk_level, "#808080")
+            
+            with cols[i]:
+                st.markdown(f"""
+                <div style="background: #2d2d2d; border-left: 3px solid {color}; padding: 15px; text-align: center;">
+                    <div style="font-size: 14px; color: #FFFFFF; font-weight: bold; text-transform: uppercase;">
+                        {topic.replace('_', ' ')}
+                    </div>
+                    <div style="font-size: 12px; color: {color}; margin-top: 8px;">
+                        {risk_level.upper()} RISK
+                    </div>
+                    <div style="font-size: 11px; color: #B7B7B7; margin-top: 4px;">
+                        {'Validation Required' if config.get('requires_validation') else 'Standard Processing'}
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown("---")
+    
+    # Routing Decision Guide
+    st.markdown("### Routing Decision Guide")
+    st.markdown("""
+    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-top: 20px;">
+        <div style="background: #2d2d2d; border-left: 4px solid #73BF69; padding: 15px;">
+            <div style="color: #73BF69; font-weight: bold;">AI Response</div>
+            <div style="color: #B7B7B7; font-size: 12px; margin-top: 8px;">
+                High confidence, low risk. Safe to deliver AI response directly.
+            </div>
+        </div>
+        <div style="background: #2d2d2d; border-left: 4px solid #3274D9; padding: 15px;">
+            <div style="color: #3274D9; font-weight: bold;">Hold for Review</div>
+            <div style="color: #B7B7B7; font-size: 12px; margin-top: 8px;">
+                Medium confidence with validation issues. Queue for async human review.
+            </div>
+        </div>
+        <div style="background: #2d2d2d; border-left: 4px solid #F79420; padding: 15px;">
+            <div style="color: #F79420; font-weight: bold;">Safe Fallback</div>
+            <div style="color: #B7B7B7; font-size: 12px; margin-top: 8px;">
+                Low confidence or high risk. Use pre-approved safe response.
+            </div>
+        </div>
+        <div style="background: #2d2d2d; border-left: 4px solid #E24D42; padding: 15px;">
+            <div style="color: #E24D42; font-weight: bold;">Human Escalation</div>
+            <div style="color: #B7B7B7; font-size: 12px; margin-top: 8px;">
+                Critical risk or very low confidence. Route to human agent immediately.
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+
 def show_rollback_page():
     """Rollback Control Dashboard"""
     st.markdown("""
@@ -682,9 +1249,13 @@ def show_rollback_page():
         
         col1, col2 = st.columns(2)
         with col1:
-            show_known_good = st.checkbox("Show only known-good versions", value=False)
+            show_known_good = st.checkbox(
+                "Show only known-good versions", 
+                value=False,
+                help="Known-good versions have been verified to perform well and are preferred for rollbacks"
+            )
         with col2:
-            if st.button("Create Snapshot"):
+            if st.button("Create Snapshot", help="Save current configuration as a new version that can be restored later"):
                 result = make_api_request("/api/rollback/snapshot", method="POST", json_data={})
                 if result:
                     st.success("Snapshot created!")
@@ -721,6 +1292,58 @@ def show_rollback_page():
                                 st.warning("Please provide a rollback reason")
     else:
         st.info("No configuration versions found")
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown("---")
+    
+    # Automated Triggers Status
+    st.markdown("### Automated Rollback Triggers")
+    trigger_status = get_trigger_status()
+    
+    if trigger_status:
+        in_cooldown = trigger_status.get("in_cooldown", False)
+        cooldown_color = "#F79420" if in_cooldown else "#73BF69"
+        cooldown_text = "IN COOLDOWN" if in_cooldown else "ARMED"
+        
+        st.markdown(f"""
+        <div style="background: #2d2d2d; border-left: 4px solid {cooldown_color}; padding: 15px; margin-bottom: 20px;">
+            <span style="color: {cooldown_color}; font-weight: bold;">System Status: {cooldown_text}</span>
+            <span style="color: #B7B7B7; margin-left: 20px;">
+                Last Rollback: {trigger_status.get('last_rollback', 'Never')[:19] if trigger_status.get('last_rollback') else 'Never'}
+            </span>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        triggers = trigger_status.get("triggers", {})
+        current_state = trigger_status.get("current_state", {})
+        
+        st.markdown("**Active Triggers:**")
+        cols = st.columns(len(triggers))
+        
+        for i, (trigger_name, trigger_config) in enumerate(triggers.items()):
+            enabled = trigger_config.get("enabled", False)
+            color = "#73BF69" if enabled else "#808080"
+            
+            with cols[i]:
+                st.markdown(f"""
+                <div style="background: #2d2d2d; padding: 15px; border-radius: 4px; text-align: center;">
+                    <div style="color: {color}; font-weight: bold; font-size: 12px; text-transform: uppercase;">
+                        {trigger_name.replace('_', ' ')}
+                    </div>
+                    <div style="color: {'#73BF69' if enabled else '#808080'}; margin-top: 8px;">
+                        {'ENABLED' if enabled else 'DISABLED'}
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+        
+        st.markdown("**Current Alert State:**")
+        col1, col2 = st.columns(2)
+        with col1:
+            emergency_count = current_state.get("emergency_alerts_1h", 0)
+            st.metric("Emergency Alerts (1h)", emergency_count)
+        with col2:
+            critical_count = current_state.get("critical_alerts_1h", 0)
+            st.metric("Critical Alerts (1h)", critical_count)
     
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown("---")

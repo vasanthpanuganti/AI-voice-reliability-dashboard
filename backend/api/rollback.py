@@ -146,3 +146,67 @@ def create_snapshot(
         "version_label": version.version_label,
         "snapshot_timestamp": version.snapshot_timestamp.isoformat()
     }
+
+
+@router.get("/triggers/status")
+def get_trigger_status(db: Session = Depends(get_db)):
+    """
+    Get status of all automated rollback triggers.
+    
+    Returns trigger configuration, current state, and whether system is in cooldown.
+    """
+    service = RollbackService(db)
+    return service.get_trigger_status()
+
+
+@router.get("/audit-log")
+def get_audit_log(limit: int = 50, db: Session = Depends(get_db)):
+    """
+    Get detailed audit log of all rollback events.
+    
+    For compliance and post-incident analysis.
+    """
+    service = RollbackService(db)
+    return service.get_rollback_audit_log(limit=limit)
+
+
+@router.post("/versions/{version_id}/mark-known-good")
+def mark_version_known_good(version_id: int, db: Session = Depends(get_db)):
+    """
+    Mark a configuration version as known-good.
+    
+    Known-good versions are preferred targets for automated rollbacks.
+    """
+    service = ConfigurationService(db)
+    version = service.mark_version_as_known_good(version_id)
+    
+    if not version:
+        raise HTTPException(status_code=404, detail="Version not found")
+    
+    return {
+        "message": "Version marked as known-good",
+        "version_id": version.id,
+        "version_label": version.version_label
+    }
+
+
+@router.get("/recommended-version")
+def get_recommended_version(db: Session = Depends(get_db)):
+    """
+    Get the recommended version for rollback.
+    
+    Returns the best known-good version based on performance metrics.
+    """
+    service = ConfigurationService(db)
+    version = service.get_best_version_by_metrics()
+    
+    if not version:
+        raise HTTPException(status_code=404, detail="No known-good versions available")
+    
+    return {
+        "id": version.id,
+        "version_label": version.version_label,
+        "performance_metrics": version.performance_metrics,
+        "is_known_good": version.is_known_good,
+        "snapshot_timestamp": version.snapshot_timestamp.isoformat()
+    }

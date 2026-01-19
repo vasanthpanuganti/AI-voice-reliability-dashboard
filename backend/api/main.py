@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
-from backend.api import drift, rollback
+from backend.api import drift, rollback, routing
 from backend.database import init_db
 
 @asynccontextmanager
@@ -33,6 +33,7 @@ app.add_middleware(
 # Include routers
 app.include_router(drift.router)
 app.include_router(rollback.router)
+app.include_router(routing.router)
 
 @app.get("/")
 def root():
@@ -46,6 +47,7 @@ def root():
         "endpoints": {
             "drift": "/api/drift",
             "rollback": "/api/rollback",
+            "routing": "/api/routing",
             "dashboard": "/"
         }
     }

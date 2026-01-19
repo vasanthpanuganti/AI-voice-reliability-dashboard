@@ -39,10 +39,17 @@ class DriftMetric(Base):
     # Wasserstein distance (Earth Mover's Distance for embeddings)
     wasserstein_distance = Column(Float)
 
+    # Chi-Square test for categorical drift
+    chi_square_statistic = Column(Float)
+    chi_square_p_value = Column(Float)
+
     # Window information
     window_start = Column(DateTime(timezone=True))
     window_end = Column(DateTime(timezone=True))
     sample_size = Column(Integer)
+    
+    # Computation metadata
+    computation_time_ms = Column(Float)
 
 class DriftAlert(Base):
     """Alerts generated when drift thresholds are breached"""

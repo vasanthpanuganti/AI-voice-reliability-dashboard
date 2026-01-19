@@ -1,10 +1,7 @@
 """
 Generate sample data for AI Pipeline Resilience Dashboard demo.
-Creates realistic healthcare query data demonstrating:
-- Normal operation phase
-- Drift/degradation phase with multiple alerts
-- Rollback events
-- Recovery phase
+Creates realistic healthcare query data to demonstrate drift detection and rollback.
+No external dependencies (Kaggle) required.
 """
 import sys
 import numpy as np
@@ -18,10 +15,9 @@ from backend.database import SessionLocal, init_db
 from backend.models.query_log import QueryLog
 from backend.models.drift_metrics import DriftMetric, DriftAlert, MetricType, DriftSeverity
 from backend.models.configuration import Configuration, ConfigVersion
-from backend.models.rollback import RollbackEvent, RollbackTriggerType, RollbackStatus
 from backend.services.configuration_service import ConfigurationService
 
-# Sample healthcare queries by category
+# Sample healthcare queries by category (realistic for appointment booking system)
 SAMPLE_QUERIES = {
     "appointment": [
         "I need to schedule an appointment with Dr. Smith",
@@ -110,22 +106,29 @@ SAMPLE_QUERIES = {
     ],
 }
 
-
 def generate_simple_embedding(query: str, dimension: int = 384) -> list:
-    """Generate a deterministic embedding based on query text."""
+    """Generate a simple deterministic embedding based on query text."""
     np.random.seed(hash(query) % (2**32))
     embedding = np.random.randn(dimension).astype(float)
     embedding = embedding / np.linalg.norm(embedding)
     return embedding.tolist()
 
-
-def create_queries_for_phase(db, phase_config, phase_name):
-    """Create queries for a specific phase of the demo."""
-    print(f"  Creating {phase_config['n_samples']} queries for {phase_name}...")
+def create_baseline_data(db, n_samples: int = 8000):
+    """Create baseline data representing normal operation (Week 1)"""
+    category_distribution = {
+        "appointment": 0.35,
+        "prescription": 0.25,
+        "billing": 0.20,
+        "clinical_symptom": 0.10,
+        "general": 0.10,
+    }
+    
+    end_time = datetime.now()
+    start_time = end_time - timedelta(days=7)
     
     queries_created = 0
-    for category, pct in phase_config['distribution'].items():
-        n_cat = int(phase_config['n_samples'] * pct)
+    for category, pct in category_distribution.items():
+        n_cat = int(n_samples * pct)
         queries = SAMPLE_QUERIES[category]
         
         for i in range(n_cat):
@@ -135,20 +138,19 @@ def create_queries_for_phase(db, phase_config, phase_name):
             elif i % 5 == 0:
                 query_text = query_text + " please"
             
-            timestamp = phase_config['start_time'] + timedelta(
-                seconds=np.random.uniform(0, (phase_config['end_time'] - phase_config['start_time']).total_seconds())
-            )
-            
-            confidence = round(np.random.beta(
-                phase_config['confidence_alpha'], 
-                phase_config['confidence_beta']
-            ), 4)
+            window_duration = (end_time - start_time).total_seconds()
+            if window_duration <= 0:
+                timestamp = end_time
+            else:
+                timestamp = start_time + timedelta(
+                    seconds=np.random.uniform(0, window_duration)
+                )
             
             query_log = QueryLog(
                 query=query_text,
                 query_category=category,
                 embedding=generate_simple_embedding(query_text),
-                confidence_score=str(confidence),
+                confidence_score=round(np.random.beta(8, 2), 4),
                 ai_response=f"Response to {category} query: {query_text[:50]}...",
                 timestamp=timestamp
             )
@@ -158,263 +160,174 @@ def create_queries_for_phase(db, phase_config, phase_name):
     db.commit()
     return queries_created
 
+def create_recent_data(db, n_samples: int = 2000):
+    """Create recent queries representing current period"""
+    current_distribution = {
+        "appointment": 0.15,
+        "prescription": 0.15,
+        "billing": 0.50,
+        "clinical_symptom": 0.10,
+        "general": 0.10,
+    }
+    
+    # Use a 30-minute window to ensure queries stay active longer
+    end_time = datetime.now()
+    start_time = end_time - timedelta(minutes=30)
+    
+    queries_created = 0
+    for category, pct in current_distribution.items():
+        n_cat = int(n_samples * pct)
+        queries = SAMPLE_QUERIES[category]
+        
+        for i in range(n_cat):
+            query_text = queries[i % len(queries)]
+            
+            # Prefer more recent timestamps (last 20 minutes)
+            # 70% chance of being in last 20 minutes, 30% in 20-30 minutes ago
+            if np.random.random() < 0.7:
+                window_start = end_time - timedelta(minutes=20)
+            else:
+                window_start = start_time
+            
+            window_duration = (end_time - window_start).total_seconds()
+            if window_duration <= 0:
+                timestamp = end_time
+            else:
+                timestamp = window_start + timedelta(
+                    seconds=np.random.uniform(0, window_duration)
+                )
+            
+            confidence = round(np.random.beta(5, 4), 4)
+            
+            query_log = QueryLog(
+                query=query_text,
+                query_category=category,
+                embedding=generate_simple_embedding(query_text),
+                confidence_score=confidence,
+                ai_response=f"Response to {category} query: {query_text[:50]}...",
+                timestamp=timestamp
+            )
+            db.add(query_log)
+            queries_created += 1
+    
+    db.commit()
+    return queries_created
 
-def create_all_query_data(db):
-    """Create query data showing the full lifecycle: normal -> drift -> rollback -> recovery"""
+def refresh_recent_queries(db, n_samples: int = 500):
+    """
+    Add new recent queries to ensure there are always queries in the active window.
+    This can be called periodically (e.g., every 10 minutes) to keep queries flowing.
+    """
+    current_distribution = {
+        "appointment": 0.20,
+        "prescription": 0.20,
+        "billing": 0.30,
+        "clinical_symptom": 0.15,
+        "general": 0.15,
+    }
+    
+    # Add queries within the last 5 minutes to ensure they're in the active window
+    end_time = datetime.now()
+    start_time = end_time - timedelta(minutes=5)
+    
+    queries_created = 0
+    for category, pct in current_distribution.items():
+        n_cat = int(n_samples * pct)
+        queries = SAMPLE_QUERIES[category]
+        
+        for i in range(n_cat):
+            query_text = queries[i % len(queries)]
+            
+            window_duration = (end_time - start_time).total_seconds()
+            if window_duration <= 0:
+                timestamp = end_time
+            else:
+                timestamp = start_time + timedelta(
+                    seconds=np.random.uniform(0, window_duration)
+                )
+            
+            confidence = round(np.random.beta(5, 4), 4)
+            
+            query_log = QueryLog(
+                query=query_text,
+                query_category=category,
+                embedding=generate_simple_embedding(query_text),
+                confidence_score=confidence,
+                ai_response=f"Response to {category} query: {query_text[:50]}...",
+                timestamp=timestamp
+            )
+            db.add(query_log)
+            queries_created += 1
+    
+    db.commit()
+    return queries_created
+
+def create_sample_drift_metrics(db):
+    """Create sample drift metrics to show in dashboard"""
     now = datetime.now()
     
-    # Phase 1: Normal operation (7-4 days ago) - Baseline
-    phase1 = {
-        'n_samples': 4000,
-        'start_time': now - timedelta(days=7),
-        'end_time': now - timedelta(days=4),
-        'distribution': {
-            "appointment": 0.35,
-            "prescription": 0.25,
-            "billing": 0.20,
-            "clinical_symptom": 0.10,
-            "general": 0.10,
-        },
-        'confidence_alpha': 8,  # High confidence
-        'confidence_beta': 2
-    }
-    
-    # Phase 2: Early drift (4-2 days ago) - Distribution starting to shift
-    phase2 = {
-        'n_samples': 2000,
-        'start_time': now - timedelta(days=4),
-        'end_time': now - timedelta(days=2),
-        'distribution': {
-            "appointment": 0.28,
-            "prescription": 0.22,
-            "billing": 0.30,  # Starting to increase
-            "clinical_symptom": 0.10,
-            "general": 0.10,
-        },
-        'confidence_alpha': 6,  # Slightly lower confidence
-        'confidence_beta': 3
-    }
-    
-    # Phase 3: Significant drift (2 days - 6 hours ago) - Major degradation
-    phase3 = {
-        'n_samples': 2500,
-        'start_time': now - timedelta(days=2),
-        'end_time': now - timedelta(hours=6),
-        'distribution': {
-            "appointment": 0.15,
-            "prescription": 0.15,
-            "billing": 0.50,  # Major shift
-            "clinical_symptom": 0.10,
-            "general": 0.10,
-        },
-        'confidence_alpha': 4,  # Lower confidence - degradation
-        'confidence_beta': 5
-    }
-    
-    # Phase 4: Post-rollback recovery (last 6 hours) - Returning to normal
-    phase4 = {
-        'n_samples': 1500,
-        'start_time': now - timedelta(hours=6),
-        'end_time': now,
-        'distribution': {
-            "appointment": 0.32,
-            "prescription": 0.24,
-            "billing": 0.24,  # Normalizing after rollback
-            "clinical_symptom": 0.10,
-            "general": 0.10,
-        },
-        'confidence_alpha': 7,  # Confidence recovering
-        'confidence_beta': 2
-    }
-    
-    total = 0
-    total += create_queries_for_phase(db, phase1, "Phase 1: Normal Operation")
-    total += create_queries_for_phase(db, phase2, "Phase 2: Early Drift")
-    total += create_queries_for_phase(db, phase3, "Phase 3: Significant Drift")
-    total += create_queries_for_phase(db, phase4, "Phase 4: Post-Rollback Recovery")
-    
-    return total
-
-
-def create_drift_metrics_timeline(db):
-    """Create drift metrics showing the full timeline with degradation and recovery."""
-    print("Creating drift metrics timeline...")
-    now = datetime.now()
-    
-    metrics_timeline = [
-        # Phase 1: Normal operation (7-4 days ago)
-        {"days_ago": 7, "hours_ago": 0, "psi": 0.04, "ks_p": 0.92, "js": 0.02, "sample_size": 500},
-        {"days_ago": 6, "hours_ago": 12, "psi": 0.05, "ks_p": 0.88, "js": 0.03, "sample_size": 520},
-        {"days_ago": 6, "hours_ago": 0, "psi": 0.04, "ks_p": 0.85, "js": 0.03, "sample_size": 480},
-        {"days_ago": 5, "hours_ago": 12, "psi": 0.06, "ks_p": 0.82, "js": 0.04, "sample_size": 510},
-        {"days_ago": 5, "hours_ago": 0, "psi": 0.05, "ks_p": 0.80, "js": 0.03, "sample_size": 490},
-        {"days_ago": 4, "hours_ago": 12, "psi": 0.07, "ks_p": 0.78, "js": 0.05, "sample_size": 530},
-        {"days_ago": 4, "hours_ago": 0, "psi": 0.06, "ks_p": 0.75, "js": 0.04, "sample_size": 500},
-        
-        # Phase 2: Early drift (4-2 days ago) - Warnings start
-        {"days_ago": 3, "hours_ago": 18, "psi": 0.10, "ks_p": 0.65, "js": 0.07, "sample_size": 520},
-        {"days_ago": 3, "hours_ago": 12, "psi": 0.13, "ks_p": 0.45, "js": 0.09, "sample_size": 540},
-        {"days_ago": 3, "hours_ago": 6, "psi": 0.16, "ks_p": 0.08, "js": 0.11, "sample_size": 550},  # First warning
-        {"days_ago": 3, "hours_ago": 0, "psi": 0.18, "ks_p": 0.04, "js": 0.13, "sample_size": 560},  # More warnings
-        {"days_ago": 2, "hours_ago": 18, "psi": 0.20, "ks_p": 0.03, "js": 0.15, "sample_size": 580},
-        {"days_ago": 2, "hours_ago": 12, "psi": 0.23, "ks_p": 0.015, "js": 0.17, "sample_size": 600},
-        
-        # Phase 3: Critical drift (2 days - 6 hours ago) - Critical/Emergency alerts
-        {"days_ago": 2, "hours_ago": 6, "psi": 0.26, "ks_p": 0.008, "js": 0.21, "sample_size": 620},  # Critical
-        {"days_ago": 2, "hours_ago": 0, "psi": 0.30, "ks_p": 0.005, "js": 0.24, "sample_size": 640},
-        {"days_ago": 1, "hours_ago": 18, "psi": 0.35, "ks_p": 0.002, "js": 0.27, "sample_size": 660},
-        {"days_ago": 1, "hours_ago": 12, "psi": 0.42, "ks_p": 0.0008, "js": 0.32, "sample_size": 680},  # Emergency
-        {"days_ago": 1, "hours_ago": 6, "psi": 0.45, "ks_p": 0.0005, "js": 0.35, "sample_size": 700},  # Peak degradation
-        
-        # Rollback executed here (6 hours ago)
-        
-        # Phase 4: Recovery after rollback (last 6 hours) - but with some lingering issues
-        {"days_ago": 0, "hours_ago": 5, "psi": 0.22, "ks_p": 0.02, "js": 0.18, "sample_size": 400},  # Immediate improvement
-        {"days_ago": 0, "hours_ago": 4, "psi": 0.18, "ks_p": 0.04, "js": 0.14, "sample_size": 420},  # Still warning
-        {"days_ago": 0, "hours_ago": 3, "psi": 0.16, "ks_p": 0.06, "js": 0.11, "sample_size": 440},  # Warning
-        {"days_ago": 0, "hours_ago": 2, "psi": 0.19, "ks_p": 0.035, "js": 0.13, "sample_size": 460},  # Small spike - warning
-        {"days_ago": 0, "hours_ago": 1, "psi": 0.17, "ks_p": 0.045, "js": 0.12, "sample_size": 480},  # Warning
-        {"days_ago": 0, "hours_ago": 0, "psi": 0.16, "ks_p": 0.048, "js": 0.11, "sample_size": 500},  # Current - warning level
+    metrics_data = [
+        {"days_ago": 6, "psi": 0.05, "ks_p": 0.85, "js": 0.03},
+        {"days_ago": 5, "psi": 0.06, "ks_p": 0.78, "js": 0.04},
+        {"days_ago": 4, "psi": 0.04, "ks_p": 0.82, "js": 0.03},
+        {"days_ago": 3, "psi": 0.07, "ks_p": 0.75, "js": 0.05},
+        {"days_ago": 2, "psi": 0.08, "ks_p": 0.70, "js": 0.06},
+        {"days_ago": 1, "psi": 0.12, "ks_p": 0.45, "js": 0.09},
+        {"hours_ago": 6, "psi": 0.18, "ks_p": 0.03, "js": 0.15},
+        {"hours_ago": 3, "psi": 0.22, "ks_p": 0.01, "js": 0.18},
+        {"hours_ago": 1, "psi": 0.28, "ks_p": 0.005, "js": 0.22},
     ]
     
-    metric_ids = []
-    for m in metrics_timeline:
-        timestamp = now - timedelta(days=m["days_ago"], hours=m["hours_ago"])
+    for m in metrics_data:
+        if "days_ago" in m:
+            timestamp = now - timedelta(days=m["days_ago"])
+        else:
+            timestamp = now - timedelta(hours=m["hours_ago"])
+        
         window_start = timestamp - timedelta(minutes=15)
         
         drift_metric = DriftMetric(
             metric_type=MetricType.INPUT_DRIFT,
             psi_score=m["psi"],
-            ks_statistic=0.15 + (m["psi"] * 0.5),
+            ks_statistic=0.15,
             ks_p_value=m["ks_p"],
             js_divergence=m["js"],
             window_start=window_start,
             window_end=timestamp,
-            sample_size=m["sample_size"],
+            sample_size=200,
             timestamp=timestamp
         )
         db.add(drift_metric)
-        db.flush()
-        metric_ids.append((drift_metric.id, m, timestamp))
     
     db.commit()
-    print(f"  Created {len(metrics_timeline)} drift metric records")
-    return metric_ids
 
-
-def create_alerts_timeline(db, metric_ids):
-    """Create 15-20 alerts showing the progression of issues and recovery."""
-    print("Creating alerts timeline...")
+def create_sample_alerts(db):
+    """Create sample alerts to demonstrate alerting system"""
+    now = datetime.now()
     
-    alerts_config = []
+    latest_metric = db.query(DriftMetric).order_by(DriftMetric.timestamp.desc()).first()
+    metric_id = latest_metric.id if latest_metric else None
     
-    for metric_id, m, timestamp in metric_ids:
-        # PSI alerts
-        if m["psi"] >= 0.40:
-            alerts_config.append({
-                "metric_id": metric_id,
-                "metric_type": MetricType.INPUT_DRIFT,
-                "metric_name": "psi_score",
-                "metric_value": m["psi"],
-                "threshold_value": 0.40,
-                "severity": DriftSeverity.EMERGENCY,
-                "status": "resolved" if m["days_ago"] > 0 or m["hours_ago"] > 5 else "active",
-                "timestamp": timestamp
-            })
-        elif m["psi"] >= 0.25:
-            alerts_config.append({
-                "metric_id": metric_id,
-                "metric_type": MetricType.INPUT_DRIFT,
-                "metric_name": "psi_score",
-                "metric_value": m["psi"],
-                "threshold_value": 0.25,
-                "severity": DriftSeverity.CRITICAL,
-                "status": "resolved" if m["days_ago"] > 0 or m["hours_ago"] > 5 else "active",
-                "timestamp": timestamp
-            })
-        elif m["psi"] >= 0.15:
-            alerts_config.append({
-                "metric_id": metric_id,
-                "metric_type": MetricType.INPUT_DRIFT,
-                "metric_name": "psi_score",
-                "metric_value": m["psi"],
-                "threshold_value": 0.15,
-                "severity": DriftSeverity.WARNING,
-                "status": "resolved" if m["days_ago"] > 0 or m["hours_ago"] > 4 else "active",
-                "timestamp": timestamp
-            })
-        
-        # KS p-value alerts (lower is worse)
-        if m["ks_p"] <= 0.001:
-            alerts_config.append({
-                "metric_id": metric_id,
-                "metric_type": MetricType.OUTPUT_DRIFT,
-                "metric_name": "ks_p_value",
-                "metric_value": m["ks_p"],
-                "threshold_value": 0.001,
-                "severity": DriftSeverity.EMERGENCY,
-                "status": "resolved" if m["days_ago"] > 0 or m["hours_ago"] > 5 else "active",
-                "timestamp": timestamp
-            })
-        elif m["ks_p"] <= 0.01:
-            alerts_config.append({
-                "metric_id": metric_id,
-                "metric_type": MetricType.OUTPUT_DRIFT,
-                "metric_name": "ks_p_value",
-                "metric_value": m["ks_p"],
-                "threshold_value": 0.01,
-                "severity": DriftSeverity.CRITICAL,
-                "status": "resolved" if m["days_ago"] > 0 or m["hours_ago"] > 5 else "active",
-                "timestamp": timestamp
-            })
-        elif m["ks_p"] <= 0.05:
-            alerts_config.append({
-                "metric_id": metric_id,
-                "metric_type": MetricType.OUTPUT_DRIFT,
-                "metric_name": "ks_p_value",
-                "metric_value": m["ks_p"],
-                "threshold_value": 0.05,
-                "severity": DriftSeverity.WARNING,
-                "status": "resolved" if m["days_ago"] > 0 or m["hours_ago"] > 4 else "active",
-                "timestamp": timestamp
-            })
-        
-        # JS divergence alerts
-        if m["js"] >= 0.30:
-            alerts_config.append({
-                "metric_id": metric_id,
-                "metric_type": MetricType.EMBEDDING_DRIFT,
-                "metric_name": "js_divergence",
-                "metric_value": m["js"],
-                "threshold_value": 0.30,
-                "severity": DriftSeverity.EMERGENCY,
-                "status": "resolved" if m["days_ago"] > 0 or m["hours_ago"] > 5 else "active",
-                "timestamp": timestamp
-            })
-        elif m["js"] >= 0.20:
-            alerts_config.append({
-                "metric_id": metric_id,
-                "metric_type": MetricType.EMBEDDING_DRIFT,
-                "metric_name": "js_divergence",
-                "metric_value": m["js"],
-                "threshold_value": 0.20,
-                "severity": DriftSeverity.CRITICAL,
-                "status": "resolved" if m["days_ago"] > 0 or m["hours_ago"] > 5 else "active",
-                "timestamp": timestamp
-            })
-        elif m["js"] >= 0.10:
-            alerts_config.append({
-                "metric_id": metric_id,
-                "metric_type": MetricType.EMBEDDING_DRIFT,
-                "metric_name": "js_divergence",
-                "metric_value": m["js"],
-                "threshold_value": 0.10,
-                "severity": DriftSeverity.WARNING,
-                "status": "resolved" if m["days_ago"] > 0 or m["hours_ago"] > 4 else "active",
-                "timestamp": timestamp
-            })
+    alerts = [
+        {
+            "metric_type": MetricType.INPUT_DRIFT,
+            "metric_name": "psi_score",
+            "metric_value": 0.28,
+            "threshold_value": 0.25,
+            "severity": DriftSeverity.CRITICAL,
+            "status": "active",
+        },
+        {
+            "metric_type": MetricType.OUTPUT_DRIFT,
+            "metric_name": "ks_p_value",
+            "metric_value": 0.005,
+            "threshold_value": 0.01,
+            "severity": DriftSeverity.CRITICAL,
+            "status": "active",
+        },
+    ]
     
-    for alert_data in alerts_config:
+    for alert_data in alerts:
         alert = DriftAlert(
             metric_type=alert_data["metric_type"],
             metric_name=alert_data["metric_name"],
@@ -422,93 +335,44 @@ def create_alerts_timeline(db, metric_ids):
             threshold_value=alert_data["threshold_value"],
             severity=alert_data["severity"],
             status=alert_data["status"],
-            drift_metric_id=alert_data["metric_id"],
-            created_at=alert_data["timestamp"]
+            drift_metric_id=metric_id,
+            created_at=now - timedelta(minutes=5)
         )
         db.add(alert)
     
     db.commit()
-    
-    active_count = len([a for a in alerts_config if a["status"] == "active"])
-    resolved_count = len([a for a in alerts_config if a["status"] == "resolved"])
-    print(f"  Created {len(alerts_config)} alerts ({active_count} active, {resolved_count} resolved)")
-    return len(alerts_config)
-
 
 def create_configuration_versions(db):
-    """Create configuration versions showing the problematic version and rollback."""
-    print("Creating configuration versions...")
-    
+    """Create configuration with version history"""
     config_service = ConfigurationService(db)
-    now = datetime.now()
     
-    # Create current configuration
     config_service.create_or_update_current_config(
         embedding_model="all-MiniLM-L6-v2",
         similarity_threshold=0.75,
         confidence_threshold=0.70
     )
     
-    # v1.0 - Original baseline (known good)
     v1 = config_service.snapshot_configuration(
         version_label="v1.0_baseline",
         performance_metrics={"accuracy": 0.95, "latency_ms": 120, "error_rate": 0.02}
     )
     config_service.mark_version_as_known_good(v1.id)
     
-    # v1.1 - Optimized version (known good)
-    v2 = config_service.snapshot_configuration(
+    config_service.snapshot_configuration(
         version_label="v1.1_optimized",
-        performance_metrics={"accuracy": 0.94, "latency_ms": 95, "error_rate": 0.025}
-    )
-    config_service.mark_version_as_known_good(v2.id)
-    
-    # v1.2 - Problematic version that caused drift
-    v3 = config_service.snapshot_configuration(
-        version_label="v1.2_experimental",
-        performance_metrics={"accuracy": 0.78, "latency_ms": 85, "error_rate": 0.15}
+        performance_metrics={"accuracy": 0.93, "latency_ms": 100, "error_rate": 0.03}
     )
     
-    # v1.1_restored - Restored after rollback (current)
-    v4 = config_service.snapshot_configuration(
-        version_label="v1.1_restored",
-        performance_metrics={"accuracy": 0.93, "latency_ms": 98, "error_rate": 0.03}
+    config_service.snapshot_configuration(
+        version_label="v1.2_current",
+        performance_metrics={"accuracy": 0.88, "latency_ms": 95, "error_rate": 0.08}
     )
-    config_service.mark_version_as_known_good(v4.id)
     
     db.commit()
-    print("  Created 4 configuration versions")
-    return v1.id, v2.id, v3.id, v4.id
-
-
-def create_rollback_events(db, version_ids):
-    """Create rollback events showing the automated recovery."""
-    print("Creating rollback events...")
-    
-    v1_id, v2_id, v3_id, v4_id = version_ids
-    now = datetime.now()
-    
-    # Rollback event triggered by emergency alert
-    rollback = RollbackEvent(
-        trigger_type=RollbackTriggerType.AUTOMATED,
-        trigger_reason="Automated rollback triggered by EMERGENCY drift alert: psi_score exceeded 0.40 threshold",
-        restored_version_id=v2_id,  # Rolling back to v1.1_optimized
-        previous_version_id=v3_id,  # From v1.2_experimental
-        status=RollbackStatus.SUCCESS,
-        executed_by="system",
-        executed_at=now - timedelta(hours=6),
-        components_restored=["embedding_model", "similarity_threshold", "confidence_threshold"],
-        components_failed=[],
-        verification_metrics={"psi_after": 0.18, "status": "improved"}
-    )
-    db.add(rollback)
-    db.commit()
-    print("  Created 1 rollback event")
-
 
 def clear_existing_data(db):
-    """Clear existing data from database."""
-    print("Clearing existing data...")
+    """Clear existing data from database"""
+    from backend.models.rollback import RollbackEvent
     
     db.query(DriftAlert).delete()
     db.query(DriftMetric).delete()
@@ -517,74 +381,21 @@ def clear_existing_data(db):
     db.query(Configuration).delete()
     db.query(QueryLog).delete()
     db.commit()
-    print("  Cleared all existing data")
-
 
 def main():
-    """Generate all sample data demonstrating the full drift-rollback lifecycle."""
-    print("=" * 70)
-    print("AI Pipeline Resilience Dashboard - Sample Data Generator")
-    print("=" * 70)
-    print("\nThis script creates demo data showing:")
-    print("  1. Normal operation phase (baseline)")
-    print("  2. Early drift detection (warnings)")
-    print("  3. Critical degradation (emergency alerts)")
-    print("  4. Automated rollback execution")
-    print("  5. System recovery after rollback")
-    print("")
-    
-    # Initialize database
-    print("Step 1: Initializing database...")
+    """Generate all sample data silently"""
     init_db()
-    
     db = SessionLocal()
     
     try:
-        # Clear existing data
-        print("\nStep 2: Clearing existing data...")
         clear_existing_data(db)
-        
-        # Create query data for all phases
-        print("\nStep 3: Creating query data (4 phases)...")
-        total_queries = create_all_query_data(db)
-        
-        # Create configuration versions
-        print("\nStep 4: Creating configuration versions...")
-        version_ids = create_configuration_versions(db)
-        
-        # Create drift metrics timeline
-        print("\nStep 5: Creating drift metrics timeline...")
-        metric_ids = create_drift_metrics_timeline(db)
-        
-        # Create alerts
-        print("\nStep 6: Creating alerts...")
-        alert_count = create_alerts_timeline(db, metric_ids)
-        
-        # Create rollback events
-        print("\nStep 7: Creating rollback events...")
-        create_rollback_events(db, version_ids)
-        
-        print("\n" + "=" * 70)
-        print("Sample data generation complete!")
-        print("=" * 70)
-        print(f"\nSummary:")
-        print(f"  - Total queries: {total_queries:,}")
-        print(f"  - Drift metrics: {len(metric_ids)} records")
-        print(f"  - Alerts: {alert_count} total")
-        print(f"  - Configuration versions: 4")
-        print(f"  - Rollback events: 1")
-        print(f"\nTimeline:")
-        print(f"  - Days 7-4: Normal operation")
-        print(f"  - Days 4-2: Drift begins (warnings)")
-        print(f"  - Days 2-0.25: Critical degradation (emergency)")
-        print(f"  - Last 6 hours: Recovery after rollback")
-        print(f"\nNext steps:")
-        print(f"  1. Start API: python run_api.py")
-        print(f"  2. Open: http://localhost:8000")
-        
+        create_baseline_data(db, n_samples=8000)
+        create_recent_data(db, n_samples=2000)
+        create_configuration_versions(db)
+        create_sample_drift_metrics(db)
+        create_sample_alerts(db)
     finally:
         db.close()
-
 
 if __name__ == "__main__":
     main()

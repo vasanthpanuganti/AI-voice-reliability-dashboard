@@ -1,12 +1,43 @@
-"""Rollback Service - Handles configuration rollbacks"""
-from datetime import datetime
-from typing import Optional, Dict
+"""Rollback Service - Handles configuration rollbacks with automated triggers"""
+from datetime import datetime, timedelta
+from typing import Optional, Dict, List
 from sqlalchemy.orm import Session
+from sqlalchemy import and_
 
 from backend.models.configuration import ConfigVersion
-from backend.models.drift_metrics import DriftAlert
+from backend.models.drift_metrics import DriftAlert, DriftMetric, DriftSeverity
 from backend.models.rollback import RollbackEvent, RollbackTriggerType, RollbackStatus
 from backend.services.configuration_service import ConfigurationService
+
+
+# Automated rollback trigger configuration
+ROLLBACK_TRIGGERS = {
+    "emergency_alert": {
+        "enabled": True,
+        "description": "Trigger rollback on EMERGENCY severity alerts",
+        "cooldown_minutes": 30,  # Don't trigger again within this window
+    },
+    "sustained_critical": {
+        "enabled": True,
+        "description": "Trigger rollback after sustained CRITICAL alerts",
+        "threshold_count": 3,  # Number of critical alerts
+        "window_minutes": 15,  # Within this time window
+        "cooldown_minutes": 60,
+    },
+    "error_rate_spike": {
+        "enabled": True,
+        "description": "Trigger rollback on error rate exceeding threshold",
+        "threshold_percentage": 15,  # 15% error rate
+        "cooldown_minutes": 30,
+    },
+    "confidence_collapse": {
+        "enabled": True,
+        "description": "Trigger rollback when average confidence drops significantly",
+        "threshold_drop": 0.25,  # 25% drop from baseline
+        "cooldown_minutes": 30,
+    },
+}
+
 
 class RollbackService:
     """Service for executing configuration rollbacks"""
@@ -131,23 +162,24 @@ class RollbackService:
         
         if not alert:
             return None
-        
+
         # Only auto-rollback on Critical or Emergency alerts
-        if alert.severity not in ["critical", "emergency"]:
+        severity_value = alert.severity.value if hasattr(alert.severity, 'value') else str(alert.severity)
+        if severity_value not in ["critical", "emergency"]:
             return None
-        
+
         # Find best known-good version
         best_version = self.config_service.get_best_version_by_metrics()
-        
+
         if not best_version:
             # No known-good version available
             return None
-        
+
         # Execute automatic rollback
         return self.execute_rollback(
             version_id=best_version.id,
             trigger_type=RollbackTriggerType.AUTOMATED,
-            trigger_reason=f"Automated rollback triggered by {alert.severity} drift alert: {alert.metric_name}",
+            trigger_reason=f"Automated rollback triggered by {severity_value} drift alert: {alert.metric_name}",
             executed_by="system",
             alert_id=alert_id
         )
@@ -162,3 +194,253 @@ class RollbackService:
     def get_rollback_by_id(self, rollback_id: int) -> Optional[RollbackEvent]:
         """Get specific rollback event by ID"""
         return self.db.query(RollbackEvent).filter(RollbackEvent.id == rollback_id).first()
+    
+    def check_automated_triggers(self) -> Optional[RollbackEvent]:
+        """
+        Check all automated rollback triggers and execute if conditions met.
+        
+        This method should be called periodically (e.g., every drift detection cycle)
+        to evaluate whether automatic rollback is warranted.
+        
+        Returns:
+            RollbackEvent if rollback triggered, None otherwise
+        """
+        # Check if we're in cooldown from recent rollback
+        if self._is_in_cooldown():
+            return None
+        
+        # Check each trigger type
+        if ROLLBACK_TRIGGERS["emergency_alert"]["enabled"]:
+            result = self._check_emergency_trigger()
+            if result:
+                return result
+        
+        if ROLLBACK_TRIGGERS["sustained_critical"]["enabled"]:
+            result = self._check_sustained_critical_trigger()
+            if result:
+                return result
+        
+        if ROLLBACK_TRIGGERS["confidence_collapse"]["enabled"]:
+            result = self._check_confidence_collapse_trigger()
+            if result:
+                return result
+        
+        return None
+    
+    def _is_in_cooldown(self, minutes: int = 30) -> bool:
+        """Check if we recently performed a rollback (cooldown period)"""
+        recent_rollback = self.db.query(RollbackEvent).filter(
+            and_(
+                RollbackEvent.status == RollbackStatus.SUCCESS,
+                RollbackEvent.executed_at >= datetime.now() - timedelta(minutes=minutes)
+            )
+        ).first()
+        return recent_rollback is not None
+    
+    def _check_emergency_trigger(self) -> Optional[RollbackEvent]:
+        """Check for EMERGENCY alerts that should trigger immediate rollback"""
+        config = ROLLBACK_TRIGGERS["emergency_alert"]
+        
+        # Find active emergency alerts
+        emergency_alert = self.db.query(DriftAlert).filter(
+            and_(
+                DriftAlert.severity == DriftSeverity.EMERGENCY,
+                DriftAlert.status == "active",
+                DriftAlert.created_at >= datetime.now() - timedelta(minutes=config["cooldown_minutes"])
+            )
+        ).order_by(DriftAlert.created_at.desc()).first()
+        
+        if not emergency_alert:
+            return None
+        
+        # Find best known-good version
+        best_version = self.config_service.get_best_version_by_metrics()
+        if not best_version:
+            return None
+        
+        # Execute automatic rollback
+        return self.execute_rollback(
+            version_id=best_version.id,
+            trigger_type=RollbackTriggerType.AUTOMATED,
+            trigger_reason=f"EMERGENCY alert triggered auto-rollback: {emergency_alert.metric_name} = {emergency_alert.metric_value:.4f} exceeded threshold {emergency_alert.threshold_value:.4f}",
+            executed_by="system",
+            alert_id=emergency_alert.id
+        )
+    
+    def _check_sustained_critical_trigger(self) -> Optional[RollbackEvent]:
+        """Check for sustained CRITICAL alerts that warrant rollback"""
+        config = ROLLBACK_TRIGGERS["sustained_critical"]
+        
+        # Count critical alerts in window
+        critical_alerts = self.db.query(DriftAlert).filter(
+            and_(
+                DriftAlert.severity == DriftSeverity.CRITICAL,
+                DriftAlert.status == "active",
+                DriftAlert.created_at >= datetime.now() - timedelta(minutes=config["window_minutes"])
+            )
+        ).all()
+        
+        if len(critical_alerts) < config["threshold_count"]:
+            return None
+        
+        # Find best known-good version
+        best_version = self.config_service.get_best_version_by_metrics()
+        if not best_version:
+            return None
+        
+        # Execute automatic rollback
+        return self.execute_rollback(
+            version_id=best_version.id,
+            trigger_type=RollbackTriggerType.AUTOMATED,
+            trigger_reason=f"Sustained CRITICAL drift: {len(critical_alerts)} critical alerts in {config['window_minutes']} minutes",
+            executed_by="system"
+        )
+    
+    def _check_confidence_collapse_trigger(self) -> Optional[RollbackEvent]:
+        """Check for significant confidence score collapse"""
+        config = ROLLBACK_TRIGGERS["confidence_collapse"]
+        
+        # Get baseline average confidence (from first week)
+        from backend.models.query_log import QueryLog
+        
+        # Get earliest query to determine baseline period
+        earliest = self.db.query(QueryLog).order_by(QueryLog.timestamp.asc()).first()
+        if not earliest:
+            return None
+        
+        baseline_end = earliest.timestamp + timedelta(days=7)
+        
+        # Calculate baseline average confidence
+        baseline_queries = self.db.query(QueryLog).filter(
+            QueryLog.timestamp < baseline_end
+        ).all()
+        
+        if len(baseline_queries) < 100:
+            return None
+        
+        baseline_confidences = [
+            float(q.confidence_score) for q in baseline_queries 
+            if q.confidence_score and self._is_valid_confidence(q.confidence_score)
+        ]
+        
+        if not baseline_confidences:
+            return None
+        
+        baseline_avg = sum(baseline_confidences) / len(baseline_confidences)
+        
+        # Calculate current average confidence (last 15 minutes)
+        current_queries = self.db.query(QueryLog).filter(
+            QueryLog.timestamp >= datetime.now() - timedelta(minutes=15)
+        ).all()
+        
+        if len(current_queries) < 10:
+            return None
+        
+        current_confidences = [
+            float(q.confidence_score) for q in current_queries 
+            if q.confidence_score and self._is_valid_confidence(q.confidence_score)
+        ]
+        
+        if not current_confidences:
+            return None
+        
+        current_avg = sum(current_confidences) / len(current_confidences)
+        
+        # Check for significant drop
+        drop = baseline_avg - current_avg
+        if drop < config["threshold_drop"]:
+            return None
+        
+        # Find best known-good version
+        best_version = self.config_service.get_best_version_by_metrics()
+        if not best_version:
+            return None
+        
+        # Execute automatic rollback
+        return self.execute_rollback(
+            version_id=best_version.id,
+            trigger_type=RollbackTriggerType.AUTOMATED,
+            trigger_reason=f"Confidence collapse detected: dropped from {baseline_avg:.2f} to {current_avg:.2f} ({drop:.0%} decrease)",
+            executed_by="system"
+        )
+    
+    def _is_valid_confidence(self, value: str) -> bool:
+        """Check if confidence score string is valid"""
+        try:
+            f = float(value)
+            return 0.0 <= f <= 1.0
+        except (ValueError, TypeError):
+            return False
+    
+    def get_trigger_status(self) -> Dict:
+        """Get current status of all automated triggers"""
+        in_cooldown = self._is_in_cooldown()
+        
+        # Get recent alerts count
+        recent_emergency = self.db.query(DriftAlert).filter(
+            and_(
+                DriftAlert.severity == DriftSeverity.EMERGENCY,
+                DriftAlert.status == "active",
+                DriftAlert.created_at >= datetime.now() - timedelta(hours=1)
+            )
+        ).count()
+        
+        recent_critical = self.db.query(DriftAlert).filter(
+            and_(
+                DriftAlert.severity == DriftSeverity.CRITICAL,
+                DriftAlert.status == "active",
+                DriftAlert.created_at >= datetime.now() - timedelta(hours=1)
+            )
+        ).count()
+        
+        return {
+            "in_cooldown": in_cooldown,
+            "triggers": {
+                name: {
+                    "enabled": config["enabled"],
+                    "description": config["description"],
+                }
+                for name, config in ROLLBACK_TRIGGERS.items()
+            },
+            "current_state": {
+                "emergency_alerts_1h": recent_emergency,
+                "critical_alerts_1h": recent_critical,
+            },
+            "last_rollback": self._get_last_rollback_time(),
+        }
+    
+    def _get_last_rollback_time(self) -> Optional[str]:
+        """Get timestamp of last successful rollback"""
+        last = self.db.query(RollbackEvent).filter(
+            RollbackEvent.status == RollbackStatus.SUCCESS
+        ).order_by(RollbackEvent.executed_at.desc()).first()
+        
+        return last.executed_at.isoformat() if last else None
+    
+    def get_rollback_audit_log(self, limit: int = 50) -> List[Dict]:
+        """
+        Get detailed audit log of all rollback events.
+        
+        For compliance and post-incident analysis.
+        """
+        events = self.db.query(RollbackEvent).order_by(
+            RollbackEvent.executed_at.desc()
+        ).limit(limit).all()
+        
+        return [
+            {
+                "id": e.id,
+                "timestamp": e.executed_at.isoformat() if e.executed_at else None,
+                "trigger_type": e.trigger_type.value if e.trigger_type else None,
+                "trigger_reason": e.trigger_reason,
+                "status": e.status.value if e.status else None,
+                "executed_by": e.executed_by,
+                "previous_version_id": e.previous_version_id,
+                "restored_version_id": e.restored_version_id,
+                "components_restored": e.components_restored,
+                "components_failed": e.components_failed,
+                "error_message": e.error_message,
+                "verification_metrics": e.verification_metrics,
+            }
+            for e in events
+        ]

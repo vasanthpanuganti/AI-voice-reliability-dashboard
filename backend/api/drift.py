@@ -13,16 +13,55 @@ from pydantic import BaseModel
 
 router = APIRouter(prefix="/api/drift", tags=["drift"])
 
+MAX_HISTORY_LIMIT = 1000  # Prevent memory exhaustion from unbounded queries
+
+@router.post("/refresh-queries")
+def refresh_recent_queries_endpoint(db: Session = Depends(get_db)):
+    """
+    Refresh recent queries to ensure active window is populated.
+    This endpoint automatically generates queries in the last 15 minutes if needed.
+    """
+    try:
+        from scripts.generate_sample_data import refresh_recent_queries
+        from datetime import datetime, timedelta
+        
+        # Check current active queries
+        cutoff = datetime.now() - timedelta(minutes=15)
+        recent_count = db.query(QueryLog).filter(QueryLog.timestamp >= cutoff).count()
+        
+        target_count = 1500
+        if recent_count < target_count:
+            needed = target_count - recent_count
+            refresh_recent_queries(db, n_samples=needed + 200)
+            return {
+                "status": "success",
+                "message": f"Generated {needed + 200} new queries",
+                "previous_count": recent_count,
+                "new_count": recent_count + needed + 200
+            }
+        else:
+            return {
+                "status": "success",
+                "message": "Sufficient queries already exist",
+                "current_count": recent_count
+            }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to refresh queries: {str(e)}")
+
 class DriftMetricsResponse(BaseModel):
     """Response model for drift metrics"""
     psi_score: Optional[float]
     ks_statistic: Optional[float]
     ks_p_value: Optional[float]
     js_divergence: Optional[float]
+    wasserstein_distance: Optional[float] = None
+    chi_square_statistic: Optional[float] = None
+    chi_square_p_value: Optional[float] = None
     timestamp: datetime
     sample_size: int
     total_queries: Optional[int] = None
     baseline_size: Optional[int] = None
+    computation_time_ms: Optional[float] = None
     
     class Config:
         from_attributes = True
@@ -136,11 +175,13 @@ def get_alerts(
     """
     query = db.query(DriftAlert)
     
-    # Filter by status unless "all" is specified
-    if status and status.lower() != "all":
-        query = query.filter(DriftAlert.status == status)
+    # Normalize and filter by status (skip filter if "all" is requested)
+    if status:
+        status_lower = status.lower()
+        if status_lower != "all":
+            query = query.filter(DriftAlert.status == status_lower)
     if severity:
-        query = query.filter(DriftAlert.severity == severity)
+        query = query.filter(DriftAlert.severity == severity.lower())
     
     alerts = query.order_by(DriftAlert.created_at.desc()).limit(100).all()
     return alerts
@@ -148,9 +189,10 @@ def get_alerts(
 @router.get("/history")
 def get_drift_history(limit: int = 100, db: Session = Depends(get_db)):
     """Get historical drift metrics"""
+    safe_limit = min(max(1, limit), MAX_HISTORY_LIMIT)
     metrics = db.query(DriftMetric).order_by(
         DriftMetric.timestamp.desc()
-    ).limit(limit).all()
+    ).limit(safe_limit).all()
     
     return [
         {
@@ -216,3 +258,154 @@ def dismiss_alert(alert_id: int, db: Session = Depends(get_db)):
     db.commit()
     
     return {"message": "Alert dismissed", "alert_id": alert_id}
+
+
+@router.get("/segments")
+def get_segment_drift(
+    segment_by: str = "query_category",
+    db: Session = Depends(get_db)
+):
+    """
+    Get drift metrics broken down by segment (query category, department, etc.).
+    
+    PRD Requirement: Segment-level monitoring to catch drift affecting specific
+    patient populations or query types even if aggregate metrics look fine.
+    
+    Args:
+        segment_by: Field to segment by (query_category, department, patient_population)
+    """
+    valid_segments = ["query_category", "department", "patient_population"]
+    if segment_by not in valid_segments:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Invalid segment_by. Must be one of: {valid_segments}"
+        )
+    
+    service = DriftDetectionService(db)
+    return service.detect_segment_drift(segment_field=segment_by)
+
+
+@router.get("/summary")
+def get_drift_summary(db: Session = Depends(get_db)):
+    """
+    Get comprehensive drift summary for the dashboard.
+    
+    Returns:
+        Summary with aggregate metrics, segment health, alerts, and recommendations
+    """
+    service = DriftDetectionService(db)
+    return service.get_drift_summary()
+
+
+@router.post("/check-triggers")
+def check_automated_triggers(db: Session = Depends(get_db)):
+    """
+    Manually trigger a check of automated rollback triggers.
+    
+    Returns whether any triggers were activated and rollback executed.
+    """
+    from backend.services.rollback_service import RollbackService
+    
+    rollback_service = RollbackService(db)
+    result = rollback_service.check_automated_triggers()
+    
+    if result:
+        return {
+            "triggered": True,
+            "rollback_id": result.id,
+            "trigger_reason": result.trigger_reason,
+            "status": result.status.value if result.status else None
+        }
+    
+    return {
+        "triggered": False,
+        "message": "No automated triggers activated"
+    }
+
+
+@router.get("/categorical")
+def get_categorical_drift(
+    category_field: str = "query_category",
+    db: Session = Depends(get_db)
+):
+    """
+    Get categorical drift analysis using Chi-Square test.
+    
+    OPTIMIZATION: Uses SQL aggregation for efficient category counting
+    rather than loading all records into memory.
+    
+    Chi-Square test detects when the distribution of categories has changed
+    significantly between baseline and current periods.
+    
+    Args:
+        category_field: Field to analyze (query_category, department, patient_population)
+    """
+    valid_fields = ["query_category", "department", "patient_population"]
+    if category_field not in valid_fields:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Invalid category_field. Must be one of: {valid_fields}"
+        )
+    
+    service = DriftDetectionService(db)
+    return service.detect_categorical_drift(category_field=category_field)
+
+
+@router.get("/comprehensive")
+def get_comprehensive_drift_analysis(db: Session = Depends(get_db)):
+    """
+    Get comprehensive drift analysis including all metric types.
+    
+    Returns detailed results for:
+    - Input drift (PSI)
+    - Output drift (KS test)
+    - Embedding drift (Wasserstein, JS divergence)
+    - Categorical drift (Chi-Square)
+    
+    OPTIMIZATION: Computes all metrics in parallel for faster response.
+    """
+    service = DriftDetectionService(db)
+    return service.compute_drift_metrics_comprehensive()
+
+
+@router.get("/baseline-stats")
+def get_baseline_statistics(db: Session = Depends(get_db)):
+    """
+    Get pre-computed baseline statistics.
+    
+    Returns cached histogram data, category counts, and summary statistics
+    used for incremental drift computation.
+    
+    OPTIMIZATION: This endpoint exposes the baseline cache for debugging
+    and verification purposes.
+    """
+    service = DriftDetectionService(db)
+    stats = service.get_baseline_statistics()
+    
+    # Convert numpy arrays to lists for JSON serialization
+    return {
+        "query_length": stats.get("query_length", {}),
+        "confidence_score": stats.get("confidence_score", {}),
+        "category_counts": stats.get("category_counts", {}),
+        "cache_ttl_hours": 24,
+        "last_computed": service._baseline_stats_time.isoformat() if service._baseline_stats_time else None
+    }
+
+
+@router.post("/invalidate-cache")
+def invalidate_baseline_cache(db: Session = Depends(get_db)):
+    """
+    Invalidate the baseline statistics cache.
+    
+    Call this when:
+    - New baseline data is added
+    - Baseline period configuration changes
+    - After major data corrections
+    """
+    service = DriftDetectionService(db)
+    service.invalidate_baseline_cache()
+    
+    return {
+        "message": "Baseline cache invalidated",
+        "note": "Next drift computation will recompute baseline statistics"
+    }

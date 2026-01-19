@@ -28,5 +28,5 @@ def get_db():
 def init_db():
     """Initialize database tables"""
     # Import all models to register them with Base
-    from backend.models import query_log, configuration, drift_metrics, rollback
+    from backend.models import query_log, configuration, drift_metrics, rollback, baseline_statistics
     Base.metadata.create_all(bind=engine)
