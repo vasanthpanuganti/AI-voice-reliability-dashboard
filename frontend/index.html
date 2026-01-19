@@ -550,6 +550,13 @@
             
             const cards = [];
             
+            // Display sample size info (window vs total)
+            const windowSize = metrics.sample_size || 0;
+            const totalQueries = metrics.total_queries || 0;
+            const sampleInfo = windowSize > 0 
+                ? `Window: ${windowSize} queries (Total: ${totalQueries.toLocaleString()})`
+                : `Total queries: ${totalQueries.toLocaleString()}`;
+            
             if (metrics.psi_score !== null && metrics.psi_score !== undefined) {
                 const severity = metrics.psi_score < 0.15 ? 'normal' : 
                                 metrics.psi_score < 0.25 ? 'warning' : 
@@ -558,7 +565,7 @@
                     'Population Stability Index (PSI)',
                     formatMetricValue(metrics.psi_score, 'psi_score'),
                     severity,
-                    `Sample size: ${metrics.sample_size || 0}`,
+                    sampleInfo,
                     (metrics.psi_score / 0.4) * 100,
                     'psi_score'
                 ));
@@ -593,7 +600,10 @@
             }
             
             if (cards.length === 0) {
-                container.innerHTML = '<div class="error">No metrics available. Generate sample data first.</div>';
+                const noDataMsg = totalQueries === 0 
+                    ? '<div class="error">No data available. Run <code>python scripts/generate_sample_data.py</code> to generate sample data.</div>'
+                    : '<div class="error">No metrics available. Generate sample data first.</div>';
+                container.innerHTML = noDataMsg;
             } else {
                 container.innerHTML = `<div class="metrics-grid">${cards.join('')}</div>`;
             }

@@ -1,12 +1,14 @@
 """FastAPI endpoints for drift detection"""
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from typing import List, Optional
 from datetime import datetime
 
 from backend.database import get_db
 from backend.services.drift_detection_service import DriftDetectionService
 from backend.models.drift_metrics import DriftAlert, DriftMetric
+from backend.models.query_log import QueryLog
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/api/drift", tags=["drift"])
@@ -19,6 +21,8 @@ class DriftMetricsResponse(BaseModel):
     js_divergence: Optional[float]
     timestamp: datetime
     sample_size: int
+    total_queries: Optional[int] = None
+    baseline_size: Optional[int] = None
     
     class Config:
         from_attributes = True
@@ -47,6 +51,9 @@ def get_current_metrics(db: Session = Depends(get_db)):
     """
     from datetime import timedelta
     
+    # Get total query count for display
+    total_queries = db.query(func.count(QueryLog.id)).scalar() or 0
+    
     # Try to get most recent metrics from database (within last 5 minutes)
     recent_metric = db.query(DriftMetric).order_by(
         DriftMetric.timestamp.desc()
@@ -56,14 +63,15 @@ def get_current_metrics(db: Session = Depends(get_db)):
     if recent_metric and recent_metric.timestamp:
         time_diff = datetime.now() - recent_metric.timestamp.replace(tzinfo=None)
         if time_diff < timedelta(minutes=5):
-            # Return cached metrics
+            # Return cached metrics with total queries
             return DriftMetricsResponse(
                 psi_score=recent_metric.psi_score,
                 ks_statistic=recent_metric.ks_statistic,
                 ks_p_value=recent_metric.ks_p_value,
                 js_divergence=recent_metric.js_divergence,
                 timestamp=recent_metric.timestamp,
-                sample_size=recent_metric.sample_size or 0
+                sample_size=recent_metric.sample_size or 0,
+                total_queries=total_queries
             )
     
     # Otherwise, compute new metrics
@@ -84,7 +92,16 @@ def get_current_metrics(db: Session = Depends(get_db)):
                 except Exception as e:
                     print(f"Warning: Auto-rollback failed for alert {alert.id}: {e}")
         
-        return drift_metric
+        # Return with total queries
+        return DriftMetricsResponse(
+            psi_score=drift_metric.psi_score,
+            ks_statistic=drift_metric.ks_statistic,
+            ks_p_value=drift_metric.ks_p_value,
+            js_divergence=drift_metric.js_divergence,
+            timestamp=drift_metric.timestamp,
+            sample_size=drift_metric.sample_size or 0,
+            total_queries=total_queries
+        )
     except Exception as e:
         # If computation fails, return the most recent metric we have (even if old)
         if recent_metric:
@@ -94,7 +111,8 @@ def get_current_metrics(db: Session = Depends(get_db)):
                 ks_p_value=recent_metric.ks_p_value,
                 js_divergence=recent_metric.js_divergence,
                 timestamp=recent_metric.timestamp,
-                sample_size=recent_metric.sample_size or 0
+                sample_size=recent_metric.sample_size or 0,
+                total_queries=total_queries
             )
         # If no metrics at all, return default
         return DriftMetricsResponse(
@@ -103,7 +121,8 @@ def get_current_metrics(db: Session = Depends(get_db)):
             ks_p_value=1.0,
             js_divergence=0.0,
             timestamp=datetime.now(),
-            sample_size=0
+            sample_size=0,
+            total_queries=total_queries
         )
 
 @router.get("/alerts", response_model=List[AlertResponse])
