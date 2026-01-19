@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Pipeline Resilience Dashboard</title>
+    <script src="https://cdn.plot.ly/plotly-2.26.0.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #1a1a1a;
+            color: #e0e0e0;
+            line-height: 1.6;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+        
+        header {
+            margin-bottom: 2rem;
+            border-bottom: 1px solid #2a2a2a;
+            padding-bottom: 1rem;
+        }
+        
+        h1 {
+            color: #ffffff;
+            font-size: 2rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+        
+        .subtitle {
+            color: #B7B7B7;
+            font-size: 0.9rem;
+        }
+        
+        .status-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 0;
+            margin-right: 8px;
+            background: #73BF69;
+        }
+        
+        .status-indicator.offline {
+            background: #E24D42;
+        }
+        
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        
+        .metric-card {
+            background: #1a1a1a;
+            border: 1px solid #2a2a2a;
+            border-left: 4px solid #73BF69;
+            padding: 24px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+            transition: box-shadow 0.2s;
+        }
+        
+        .metric-card:hover {
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+        }
+        
+        .metric-card.warning {
+            border-left-color: #F79420;
+        }
+        
+        .metric-card.critical {
+            border-left-color: #E24D42;
+        }
+        
+        .metric-card.emergency {
+            border-left-color: #8B0000;
+        }
+        
+        .metric-label {
+            font-size: 14px;
+            color: #e0e0e0;
+            font-weight: 500;
+            margin-bottom: 8px;
+        }
+        
+        .metric-value {
+            font-size: 28px;
+            font-weight: 700;
+            color: #73BF69;
+            margin: 12px 0;
+            line-height: 1.2;
+        }
+        
+        .metric-card.warning .metric-value {
+            color: #F79420;
+        }
+        
+        .metric-card.critical .metric-value {
+            color: #E24D42;
+        }
+        
+        .metric-card.emergency .metric-value {
+            color: #8B0000;
+        }
+        
+        .metric-status {
+            font-size: 12px;
+            color: #B7B7B7;
+            margin-top: 8px;
+        }
+        
+        .progress-bar {
+            margin-top: 12px;
+            height: 4px;
+            background: #1a1a1a;
+            overflow: hidden;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: #73BF69;
+            transition: width 0.3s;
+        }
+        
+        .metric-card.warning .progress-fill {
+            background: #F79420;
+        }
+        
+        .metric-card.critical .progress-fill {
+            background: #E24D42;
+        }
+        
+        .metric-card.emergency .progress-fill {
+            background: #8B0000;
+        }
+        
+        .alerts-section {
+            margin-top: 2rem;
+        }
+        
+        .alert-panel {
+            background: #1a1a1a;
+            border-left: 4px solid;
+            padding: 20px;
+            margin: 12px 0;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+        
+        .alert-warning {
+            border-left-color: #F79420;
+        }
+        
+        .alert-critical {
+            border-left-color: #E24D42;
+        }
+        
+        .alert-emergency {
+            border-left-color: #8B0000;
+        }
+        
+        .alert-title {
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+        
+        .alert-details {
+            font-size: 14px;
+            color: #B7B7B7;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 2rem;
+            color: #B7B7B7;
+        }
+        
+        .error {
+            background: #1a1a1a;
+            border: 1px solid #E24D42;
+            padding: 1rem;
+            margin: 1rem 0;
+            color: #E24D42;
+        }
+        
+        .refresh-btn {
+            background: #2a2a2a;
+            color: white;
+            border: 1px solid #404040;
+            padding: 10px 20px;
+            border-radius: 2px;
+            cursor: pointer;
+            font-weight: 600;
+            margin-top: 1rem;
+        }
+        
+        .refresh-btn:hover {
+            background: #3a3a3a;
+        }
+        
+        .tabs {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 2rem;
+            border-bottom: 1px solid #2a2a2a;
+        }
+        
+        .tab {
+            padding: 12px 24px;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            color: #B7B7B7;
+            transition: all 0.2s;
+        }
+        
+        .tab.active {
+            color: #ffffff;
+            border-bottom-color: #73BF69;
+        }
+        
+        .tab:hover {
+            color: #ffffff;
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>AI Pipeline Resilience Dashboard</h1>
+            <p class="subtitle">Drift Detection and Rollback System for Healthcare AI Pipelines</p>
+            <div style="margin-top: 1rem;">
+                <span class="status-indicator" id="apiStatus"></span>
+                <span id="apiStatusText">Checking API...</span>
+            </div>
+        </header>
+        
+        <div class="tabs">
+            <div class="tab active" onclick="switchTab('drift')">Drift Detection</div>
+            <div class="tab" onclick="switchTab('rollback')">Rollback Control</div>
+            <div class="tab" onclick="switchTab('overview')">System Overview</div>
+        </div>
+        
+        <div id="driftTab" class="tab-content active">
+            <div id="metricsContainer" class="loading">Loading metrics...</div>
+            <div id="alertsContainer" class="alerts-section"></div>
+        </div>
+        
+        <div id="rollbackTab" class="tab-content">
+            <div id="rollbackContainer" class="loading">Loading rollback information...</div>
+        </div>
+        
+        <div id="overviewTab" class="tab-content">
+            <div id="overviewContainer" class="loading">Loading system overview...</div>
+        </div>
+        
+        <button class="refresh-btn" onclick="loadData()">Refresh Data</button>
+    </div>
+    
+    <script>
+        // Auto-detect API URL
+        const API_BASE_URL = window.location.origin;
+        let refreshInterval;
+        
+        function switchTab(tabName) {
+            // Update tab buttons
+            document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            
+            event.target.classList.add('active');
+            document.getElementById(tabName + 'Tab').classList.add('active');
+            
+            // Load data for the active tab
+            loadData();
+        }
+        
+        async function checkApiHealth() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/health`);
+                const data = await response.json();
+                const statusEl = document.getElementById('apiStatus');
+                const statusText = document.getElementById('apiStatusText');
+                
+                if (data.status === 'healthy') {
+                    statusEl.classList.remove('offline');
+                    statusText.textContent = 'API: Healthy';
+                } else {
+                    statusEl.classList.add('offline');
+                    statusText.textContent = 'API: Offline';
+                }
+            } catch (error) {
+                document.getElementById('apiStatus').classList.add('offline');
+                document.getElementById('apiStatusText').textContent = 'API: Offline';
+            }
+        }
+        
+        async function fetchAPI(endpoint) {
+            try {
+                const response = await fetch(`${API_BASE_URL}${endpoint}`);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                return await response.json();
+            } catch (error) {
+                console.error(`API Error (${endpoint}):`, error);
+                return null;
+            }
+        }
+        
+        function getSeverityClass(severity) {
+            const severityLower = severity?.toLowerCase() || 'normal';
+            if (severityLower === 'warning') return 'warning';
+            if (severityLower === 'critical') return 'critical';
+            if (severityLower === 'emergency') return 'emergency';
+            return '';
+        }
+        
+        function formatMetricValue(value, metricType) {
+            if (value === null || value === undefined) return 'N/A';
+            if (metricType === 'psi_score' || metricType === 'js_divergence') {
+                return value.toFixed(3);
+            }
+            if (metricType === 'ks_p_value') {
+                return value.toExponential(2);
+            }
+            return value.toFixed(2);
+        }
+        
+        function createMetricCard(label, value, severity, subtitle = '', progress = 0) {
+            const severityClass = getSeverityClass(severity);
+            const colorMap = {
+                normal: '#73BF69',
+                warning: '#F79420',
+                critical: '#E24D42',
+                emergency: '#8B0000'
+            };
+            const statusMap = {
+                normal: 'All Good',
+                warning: 'Needs Attention',
+                critical: 'Action Required',
+                emergency: 'Urgent Action'
+            };
+            
+            const color = colorMap[severity?.toLowerCase() || 'normal'] || '#73BF69';
+            const status = statusMap[severity?.toLowerCase() || 'normal'] || 'All Good';
+            
+            return `
+                <div class="metric-card ${severityClass}">
+                    <div class="metric-label">${label}</div>
+                    <div class="metric-value">${value}</div>
+                    <div class="metric-status">${status}</div>
+                    ${subtitle ? `<div class="metric-status">${subtitle}</div>` : ''}
+                    ${progress > 0 ? `
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: ${Math.min(100, progress)}%"></div>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+        }
+        
+        async function loadDriftMetrics() {
+            const container = document.getElementById('metricsContainer');
+            container.innerHTML = '<div class="loading">Loading metrics...</div>';
+            
+            const metrics = await fetchAPI('/api/drift/metrics');
+            
+            if (!metrics) {
+                container.innerHTML = '<div class="error">Failed to load drift metrics. Make sure the API is running.</div>';
+                return;
+            }
+            
+            const cards = [];
+            
+            if (metrics.psi_score !== null && metrics.psi_score !== undefined) {
+                const severity = metrics.psi_score < 0.15 ? 'normal' : 
+                                metrics.psi_score < 0.25 ? 'warning' : 
+                                metrics.psi_score < 0.40 ? 'critical' : 'emergency';
+                cards.push(createMetricCard(
+                    'Population Stability Index (PSI)',
+                    formatMetricValue(metrics.psi_score, 'psi_score'),
+                    severity,
+                    `Sample size: ${metrics.sample_size || 0}`,
+                    (metrics.psi_score / 0.4) * 100
+                ));
+            }
+            
+            if (metrics.ks_p_value !== null && metrics.ks_p_value !== undefined) {
+                const severity = metrics.ks_p_value > 0.05 ? 'normal' : 
+                                metrics.ks_p_value > 0.01 ? 'warning' : 
+                                metrics.ks_p_value > 0.001 ? 'critical' : 'emergency';
+                cards.push(createMetricCard(
+                    'Kolmogorov-Smirnov Test',
+                    formatMetricValue(metrics.ks_p_value, 'ks_p_value'),
+                    severity,
+                    `Statistic: ${formatMetricValue(metrics.ks_statistic, 'ks_statistic')}`
+                ));
+            }
+            
+            if (metrics.js_divergence !== null && metrics.js_divergence !== undefined) {
+                const severity = metrics.js_divergence < 0.1 ? 'normal' : 
+                                metrics.js_divergence < 0.2 ? 'warning' : 
+                                metrics.js_divergence < 0.3 ? 'critical' : 'emergency';
+                cards.push(createMetricCard(
+                    'Jensen-Shannon Divergence',
+                    formatMetricValue(metrics.js_divergence, 'js_divergence'),
+                    severity,
+                    '',
+                    (metrics.js_divergence / 0.3) * 100
+                ));
+            }
+            
+            if (cards.length === 0) {
+                container.innerHTML = '<div class="error">No metrics available. Generate sample data first.</div>';
+            } else {
+                container.innerHTML = `<div class="metrics-grid">${cards.join('')}</div>`;
+            }
+            
+            // Load alerts
+            loadAlerts();
+        }
+        
+        async function loadAlerts() {
+            const container = document.getElementById('alertsContainer');
+            const alerts = await fetchAPI('/api/drift/alerts?status=active');
+            
+            if (!alerts || alerts.length === 0) {
+                container.innerHTML = '<div style="padding: 1rem; color: #B7B7B7;">No active alerts</div>';
+                return;
+            }
+            
+            const alertsHtml = alerts.map(alert => {
+                const severityClass = getSeverityClass(alert.severity);
+                return `
+                    <div class="alert-panel alert-${severityClass}">
+                        <div class="alert-title">${alert.metric_name} - ${alert.severity.toUpperCase()}</div>
+                        <div class="alert-details">
+                            Value: ${alert.metric_value.toFixed(3)} | Threshold: ${alert.threshold_value.toFixed(3)} | 
+                            Created: ${new Date(alert.created_at).toLocaleString()}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            
+            container.innerHTML = `<h2 style="margin-bottom: 1rem;">Active Alerts</h2>${alertsHtml}`;
+        }
+        
+        async function loadRollbackInfo() {
+            const container = document.getElementById('rollbackContainer');
+            container.innerHTML = '<div class="loading">Loading rollback information...</div>';
+            
+            const [versions, history, current] = await Promise.all([
+                fetchAPI('/api/rollback/versions'),
+                fetchAPI('/api/rollback/history?limit=10'),
+                fetchAPI('/api/rollback/current-config')
+            ]);
+            
+            let html = '<h2>Rollback Control</h2>';
+            
+            if (current) {
+                html += `<div class="metric-card" style="margin-bottom: 2rem;">
+                    <div class="metric-label">Current Configuration</div>
+                    <div class="metric-value">Version ${current.version_id || 'N/A'}</div>
+                    <div class="metric-status">Created: ${current.created_at ? new Date(current.created_at).toLocaleString() : 'N/A'}</div>
+                </div>`;
+            }
+            
+            if (history && history.length > 0) {
+                html += '<h3 style="margin-top: 2rem; margin-bottom: 1rem;">Recent Rollback History</h3>';
+                html += history.map(event => `
+                    <div class="alert-panel">
+                        <div class="alert-title">Rollback to Version ${event.target_version_id}</div>
+                        <div class="alert-details">
+                            Trigger: ${event.trigger_type} | Status: ${event.status} | 
+                            ${new Date(event.created_at).toLocaleString()}
+                        </div>
+                    </div>
+                `).join('');
+            } else {
+                html += '<div style="padding: 1rem; color: #B7B7B7;">No rollback history</div>';
+            }
+            
+            container.innerHTML = html;
+        }
+        
+        async function loadOverview() {
+            const container = document.getElementById('overviewContainer');
+            container.innerHTML = '<div class="loading">Loading system overview...</div>';
+            
+            const [metrics, alerts] = await Promise.all([
+                fetchAPI('/api/drift/metrics'),
+                fetchAPI('/api/drift/alerts?status=active')
+            ]);
+            
+            let html = '<h2>System Overview</h2>';
+            
+            if (metrics) {
+                html += `<div class="metric-card" style="margin-bottom: 1rem;">
+                    <div class="metric-label">Last Metrics Update</div>
+                    <div class="metric-value">${new Date(metrics.timestamp).toLocaleString()}</div>
+                    <div class="metric-status">Sample Size: ${metrics.sample_size || 0}</div>
+                </div>`;
+            }
+            
+            if (alerts) {
+                html += `<div class="metric-card ${alerts.length > 0 ? 'warning' : ''}" style="margin-bottom: 1rem;">
+                    <div class="metric-label">Active Alerts</div>
+                    <div class="metric-value">${alerts.length}</div>
+                    <div class="metric-status">${alerts.length === 0 ? 'No issues detected' : 'Action required'}</div>
+                </div>`;
+            }
+            
+            container.innerHTML = html;
+        }
+        
+        async function loadData() {
+            await checkApiHealth();
+            
+            const activeTab = document.querySelector('.tab-content.active');
+            if (activeTab.id === 'driftTab') {
+                await loadDriftMetrics();
+            } else if (activeTab.id === 'rollbackTab') {
+                await loadRollbackInfo();
+            } else if (activeTab.id === 'overviewTab') {
+                await loadOverview();
+            }
+        }
+        
+        // Initialize
+        loadData();
+        
+        // Auto-refresh every 30 seconds
+        refreshInterval = setInterval(loadData, 30000);
+    </script>
+</body>
+</html>
